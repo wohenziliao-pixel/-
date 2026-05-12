@@ -1,0 +1,10 @@
+{
+    "display_name": "EU Runtime Hook",
+    "loading_order": 99,
+    "requires": [],
+    "optional": [],
+    "js": "hook.js",
+    "author": "Eureka",
+    "version": "1.0.0",
+    "homePage": ""
+}

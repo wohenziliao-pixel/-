@@ -1,0 +1,21 @@
+[Unit]
+Description=SillyTavern
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/SillyTavern
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sillytavern
+Environment=NODE_ENV=production
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

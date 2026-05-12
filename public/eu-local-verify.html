@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>次元姬 EU — 本地校验</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; background: #0a0a0c; color: #f1f1f5; padding: 24px; box-sizing: border-box; }
+    h1 { font-size: 1.25rem; margin: 0 0 8px; }
+    p { color: #9ca3af; margin: 0 0 16px; line-height: 1.5; max-width: 52rem; }
+    .card { background: #121218; border: 1px solid #2a2a38; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; max-width: 52rem; }
+    .ok { color: #22c55e; font-weight: 600; }
+    .fail { color: #ff6b6b; font-weight: 600; }
+    .pending { color: #eab308; }
+    ul { margin: 8px 0 0; padding-left: 1.25rem; }
+    li { margin: 6px 0; }
+    a { color: #818cf8; }
+    button { background: #6366f1; color: #fff; border: none; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 0.95rem; margin-right: 10px; margin-top: 8px; }
+    button:hover { opacity: 0.92; }
+    code { background: #1a1a24; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+    pre { background: #1a1a24; padding: 12px; border-radius: 8px; overflow: auto; font-size: 0.8rem; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>次元姬 EU — 本地校验</h1>
+  <p>本页需与 SillyTavern 同源打开（由 <code>node server.js</code> 提供静态文件），才能自动拉取并检查 <code>/eu-demo.html</code>。不要用 <code>file://</code> 直接打开本文件。</p>
+
+  <div class="card">
+    <div id="env-line" class="pending">正在检测运行环境…</div>
+    <p style="margin: 12px 0 0;">
+      <button type="button" id="btn-run">重新校验</button>
+      <a id="link-demo" href="/eu-demo.html">打开 eu-demo.html</a>
+    </p>
+  </div>
+
+  <div class="card">
+    <strong>检查结果</strong>
+    <ul id="results"></ul>
+    <pre id="raw" hidden></pre>
+  </div>
+
+  <script>
+(function () {
+  const resultsEl = document.getElementById('results');
+  const envLine = document.getElementById('env-line');
+  const rawEl = document.getElementById('raw');
+
+  function sameHttpOrigin() {
+    return location.protocol === 'http:' || location.protocol === 'https:';
+  }
+
+  function setEnvMessage() {
+    if (!sameHttpOrigin()) {
+      envLine.className = 'fail';
+      envLine.textContent = '当前不是 http(s) 页面。请在仓库根目录执行 node server.js，然后打开本页（例如 http://127.0.0.1:端口/eu-local-verify.html）。';
+      return false;
+    }
+    envLine.className = 'ok';
+    envLine.textContent = '同源环境正常：' + location.origin;
+    return true;
+  }
+
+  function addResult(ok, text) {
+    const li = document.createElement('li');
+    li.innerHTML = (ok ? '<span class="ok">通过</span> — ' : '<span class="fail">未通过</span> — ') + text;
+    resultsEl.appendChild(li);
+    return ok;
+  }
+
+  async function runChecks() {
+    resultsEl.innerHTML = '';
+    rawEl.hidden = true;
+    rawEl.textContent = '';
+
+    if (!setEnvMessage()) {
+      addResult(false, '无法拉取 eu-demo.html（非同源）。');
+      return;
+    }
+
+    let html = '';
+    try {
+      const res = await fetch('/eu-demo.html', { cache: 'no-store' });
+      if (!res.ok) {
+        addResult(false, 'GET /eu-demo.html 失败：HTTP ' + res.status);
+        return;
+      }
+      html = await res.text();
+    } catch (e) {
+      addResult(false, '请求异常：' + (e && e.message ? e.message : String(e)));
+      return;
+    }
+
+    addResult(true, '已获取 eu-demo.html（长度 ' + html.length + '）。');
+
+    const checks = [
+      { ok: !html.includes('id="demo-enter"'), label: '登录页不应再包含演示入口元素 id="demo-enter"' },
+      { ok: !html.includes('演示模式直接进入'), label: '不应再出现「演示模式直接进入」文案' },
+      { ok: !html.includes("enterApp('demo_user')"), label: '脚本中不应再出现 enterApp(\'demo_user\')（演示一键进入）' },
+      {
+        ok: !html.includes('demo_user') || html.includes("h === 'demo_user'"),
+        label: '若文件中仍出现 demo_user，须带有 tryRestore 中对 demo_user 的拦截（避免 localStorage 绕过登录）',
+      },
+    ];
+
+    let allPass = true;
+    for (const c of checks) {
+      if (!addResult(c.ok, c.label)) allPass = false;
+    }
+
+    if (allPass) {
+      addResult(true, '以上项均通过，符合「去掉演示模式」预期。');
+    }
+
+    rawEl.hidden = false;
+    rawEl.textContent = '提示：若修改了 eu-demo.html，可强制刷新 eu-demo 页面（带 ?v= 时间戳）再点「重新校验」。';
+  }
+
+  document.getElementById('btn-run').addEventListener('click', runChecks);
+
+  if (sameHttpOrigin()) {
+    const p = location.port;
+    document.getElementById('link-demo').href = '/eu-demo.html?v=' + Date.now();
+  }
+
+  runChecks();
+})();
+  </script>
+</body>
+</html>

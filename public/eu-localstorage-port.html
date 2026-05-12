@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>次元姬 EU — localStorage 迁移</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; background: #0a0a0c; color: #f1f1f5; padding: 24px; box-sizing: border-box; }
+    h1 { font-size: 1.25rem; margin: 0 0 8px; }
+    p { color: #9ca3af; margin: 0 0 16px; line-height: 1.5; max-width: 52rem; }
+    .card { background: #121218; border: 1px solid #2a2a38; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; max-width: 52rem; }
+    .ok { color: #22c55e; font-weight: 600; }
+    .fail { color: #ff6b6b; font-weight: 600; }
+    .muted { color: #9ca3af; font-size: 0.9rem; }
+    label { display: flex; align-items: center; gap: 8px; margin: 8px 0; cursor: pointer; }
+    ul { margin: 8px 0 0; padding-left: 1.25rem; max-height: 12rem; overflow: auto; }
+    li { margin: 4px 0; font-size: 0.85rem; word-break: break-all; }
+    a { color: #818cf8; }
+    button { background: #6366f1; color: #fff; border: none; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 0.95rem; margin: 8px 10px 0 0; }
+    button.secondary { background: #374151; }
+    button:hover { opacity: 0.92; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    code { background: #1a1a24; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+    pre { background: #1a1a24; padding: 12px; border-radius: 8px; overflow: auto; font-size: 0.78rem; margin-top: 12px; white-space: pre-wrap; word-break: break-all; }
+    input[type="file"] { margin-top: 10px; color: #d1d5db; }
+    #status { margin-top: 12px; font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <h1>次元姬 EU — localStorage 迁移</h1>
+  <p>全程只在<strong>当前网站这一域</strong>读写浏览器 <code>localStorage</code>，<strong>不请求云端接口、不经服务器存盘</strong>。因浏览器安全策略，旧数据必须在<strong>旧地址同源</strong>导出，在<strong>新地址同源</strong>导入（例如本机 <code>http://127.0.0.1:8017</code> 与线上 <code>https://你的域名</code> 各打开本页一次）。</p>
+
+  <div class="card">
+    <div id="env-line" class="muted">正在检测…</div>
+    <p style="margin: 12px 0 0;">
+      <a href="/eu-demo.html">打开 eu-demo.html</a>
+    </p>
+  </div>
+
+  <div class="card">
+    <strong>① 导出（在「有旧数据」的那一侧打开本页）</strong>
+    <p class="muted">默认导出键名以 <code>eu_demo_</code> 开头的项；可选带上 <code>用户名_userInput</code> 这类输入法历史键。</p>
+    <label><input type="checkbox" id="opt-userinput" checked> 同时导出 <code>*_userInput</code>（若存在）</label>
+    <p>
+      <button type="button" id="btn-export">下载 JSON 备份</button>
+      <button type="button" id="btn-preview" class="secondary">预览将导出的键</button>
+    </p>
+    <ul id="key-list" hidden></ul>
+    <div id="status-export"></div>
+  </div>
+
+  <div class="card">
+    <strong>② 导入（在「要恢复到的」那一侧打开本页，建议先登录 eu-demo 同一账号）</strong>
+    <p class="muted">选择上面下载的 JSON；只会写入文件中出现的键，不会改你的服务器文件。</p>
+    <label><input type="checkbox" id="opt-clear"> 导入前删除本域所有 <code>eu_demo_*</code> 键（谨慎）</label>
+    <p><input type="file" id="file-import" accept=".json,application/json"></p>
+    <div id="status-import"></div>
+  </div>
+
+  <div class="card">
+    <strong>说明</strong>
+    <ul style="max-height: none;">
+      <li>不要用 <code>file://</code> 打开本文件；请通过 SillyTavern 提供的 <code>http(s)://…/eu-localstorage-port.html</code> 访问。</li>
+      <li>线上站点需把本文件放到与 <code>eu-demo.html</code> 相同的 <code>public</code> 目录并部署后，才能在域名下打开本页做导入。</li>
+      <li>单域 localStorage 通常约 5MB 上限；备份过大时需删减或分次迁移。</li>
+    </ul>
+  </div>
+
+  <script>
+(function () {
+  const META_PREFIX = '__eu_port__';
+
+  function sameHttpOrigin() {
+    return location.protocol === 'http:' || location.protocol === 'https:';
+  }
+
+  const envLine = document.getElementById('env-line');
+  if (!sameHttpOrigin()) {
+    envLine.className = 'fail';
+    envLine.textContent = '当前不是 http(s)。请通过 node server.js 或线上站点访问本页。';
+    document.querySelectorAll('button, #file-import').forEach(function (el) { el.disabled = true; });
+    return;
+  }
+  envLine.className = 'ok';
+  envLine.textContent = '当前源：' + location.origin;
+
+  function shouldExportKey(key, includeUserInput) {
+    if (key.indexOf('eu_demo_') === 0) return true;
+    if (includeUserInput && /_userInput$/.test(key)) return true;
+    return false;
+  }
+
+  function collectExport(includeUserInput) {
+    const out = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !shouldExportKey(k, includeUserInput)) continue;
+      out[k] = localStorage.getItem(k);
+    }
+    return out;
+  }
+
+  function buildPayload(data) {
+    const meta = {};
+    meta[META_PREFIX + 'version'] = 1;
+    meta[META_PREFIX + 'exportedAt'] = new Date().toISOString();
+    meta[META_PREFIX + 'origin'] = location.origin;
+    return Object.assign({}, meta, data);
+  }
+
+  function stripMeta(obj) {
+    const data = {};
+    Object.keys(obj).forEach(function (k) {
+      if (k.indexOf(META_PREFIX) === 0) return;
+      data[k] = obj[k];
+    });
+    return data;
+  }
+
+  document.getElementById('btn-preview').addEventListener('click', function () {
+    const include = document.getElementById('opt-userinput').checked;
+    const data = collectExport(include);
+    const list = document.getElementById('key-list');
+    list.innerHTML = '';
+    const keys = Object.keys(data).sort();
+    keys.forEach(function (k) {
+      const li = document.createElement('li');
+      const v = data[k];
+      li.textContent = k + ' — 长度 ' + (v ? v.length : 0);
+      list.appendChild(li);
+    });
+    list.hidden = keys.length === 0;
+    document.getElementById('status-export').innerHTML = keys.length
+      ? '<span class="ok">共 ' + keys.length + ' 个键</span>'
+      : '<span class="fail">没有匹配的键</span>';
+  });
+
+  document.getElementById('btn-export').addEventListener('click', function () {
+    const include = document.getElementById('opt-userinput').checked;
+    const data = collectExport(include);
+    const keys = Object.keys(data);
+    if (!keys.length) {
+      document.getElementById('status-export').innerHTML = '<span class="fail">没有可导出的键</span>';
+      return;
+    }
+    const payload = buildPayload(data);
+    const text = JSON.stringify(payload, null, 2);
+    const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'eu-localstorage-' + (location.port || '80') + '-' + Date.now() + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    document.getElementById('status-export').innerHTML =
+      '<span class="ok">已生成下载（' + keys.length + ' 个业务键，约 ' +
+      Math.round(text.length / 1024) + ' KB）</span>';
+  });
+
+  document.getElementById('file-import').addEventListener('change', function (ev) {
+    const file = ev.target.files && ev.target.files[0];
+    const out = document.getElementById('status-import');
+    out.textContent = '';
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function () {
+      try {
+        const raw = reader.result;
+        const obj = JSON.parse(typeof raw === 'string' ? raw : '');
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+          out.innerHTML = '<span class="fail">JSON 格式须为对象 { 键: 值, … }</span>';
+          return;
+        }
+        const data = stripMeta(obj);
+        const keys = Object.keys(data);
+        if (!keys.length) {
+          out.innerHTML = '<span class="fail">文件中没有可导入的业务键</span>';
+          return;
+        }
+        for (let i = 0; i < keys.length; i++) {
+          const k = keys[i];
+          const v = data[k];
+          if (typeof v !== 'string') {
+            out.innerHTML = '<span class="fail">键「' + k + '」的值必须是字符串（请使用本页导出的 JSON）</span>';
+            return;
+          }
+        }
+
+        if (document.getElementById('opt-clear').checked) {
+          const toRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.indexOf('eu_demo_') === 0) toRemove.push(k);
+          }
+          toRemove.forEach(function (k) { localStorage.removeItem(k); });
+        }
+
+        keys.forEach(function (k) {
+          localStorage.setItem(k, data[k]);
+        });
+
+        out.innerHTML =
+          '<span class="ok">已写入 ' + keys.length + ' 个键。</span> 请打开 ' +
+          '<a href="/eu-demo.html">eu-demo.html</a> 并 <strong>Ctrl+F5</strong> 强刷。';
+      } catch (e) {
+        out.innerHTML = '<span class="fail">解析失败：' + (e && e.message ? e.message : String(e)) + '</span>';
+      }
+      ev.target.value = '';
+    };
+    reader.onerror = function () {
+      document.getElementById('status-import').innerHTML = '<span class="fail">读取文件失败</span>';
+      ev.target.value = '';
+    };
+    reader.readAsText(file, 'utf-8');
+  });
+})();
+  </script>
+</body>
+</html>
