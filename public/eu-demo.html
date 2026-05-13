@@ -4852,10 +4852,29 @@ function syncSidebarAvatarFromProfile() {
   applyAvatarToUi(getEuAccountAvatarForDisplay());
 }
 
-/** 左下角：显示昵称（个人资料「显示名称」），无则登录标识。 */
-function syncEuSidebarDisplayName() {
+/**
+ * EU 对外展示名（左下角、灌水区发帖昵称、故事书 {{user}} 等）：个人资料「显示名称」→ 用户画像名
+ * → 酒馆会话 profileName → 登录 handle。
+ */
+function getEuPublicDisplayName() {
   const ap = loadEuAccountProfile();
-  const show = String(ap.displayName || state.currentUser || 'guest').trim() || 'guest';
+  const euNick = String(ap.displayName || '').trim().slice(0, 64);
+  if (euNick) return euNick;
+  try {
+    const persona = typeof getActiveUserPersona === 'function' ? getActiveUserPersona() : null;
+    const personaName = String(persona?.name || '').trim().slice(0, 64);
+    if (personaName) return personaName;
+  } catch {
+    /* ignore */
+  }
+  const pn = String(euTiebaSessionCache.profileName || '').trim().slice(0, 64);
+  if (pn) return pn;
+  return String(state.currentUser || '').trim() || 'guest';
+}
+
+/** 左下角：昵称（见 getEuPublicDisplayName），无则回退登录标识。 */
+function syncEuSidebarDisplayName() {
+  const show = getEuPublicDisplayName();
   const nameEl = document.getElementById('user-name');
   if (nameEl) nameEl.textContent = show;
 }
@@ -6667,6 +6686,22 @@ function enterApp(username) {
   clearEuAvatarOverride();
   state.devModeEnabled = false;
   syncEuSidebarAndTopbarNames();
+  void euTiebaFetchSession()
+    .then(() => {
+      try {
+        syncEuSidebarAndTopbarNames();
+      } catch (e) {
+        console.warn('[EU] post-login name sync', e);
+      }
+      try {
+        euTiebaUpdateListHint();
+      } catch {
+        /* ignore */
+      }
+    })
+    .catch(() => {
+      /* ignore */
+    });
   document.getElementById('page-login').style.display = 'none';
   document.getElementById('page-register').style.display = 'none';
   document.getElementById('app-layout').style.display = 'flex';
@@ -6677,6 +6712,11 @@ function enterApp(username) {
   loadRoleThoughtNarrativeMode();
   updateRoleThoughtModeLabel();
   loadUserPersonas();
+  try {
+    syncEuSidebarAndTopbarNames();
+  } catch {
+    /* ignore */
+  }
   loadRuntimePrefs();
   loadConversationRuntime();
   loadGlobalSettingSelection();
@@ -9300,6 +9340,11 @@ function saveUserPersona() {
   renderPersonaList();
   if (savedId) editUserPersona(savedId);
   updateWorldChatFeatureStatus();
+  try {
+    syncEuSidebarAndTopbarNames();
+  } catch {
+    /* ignore */
+  }
   showToast('用户画像已保存', 'success');
 }
 
@@ -9312,6 +9357,11 @@ function useUserPersona(id) {
   renderPersonaList();
   editUserPersona(target);
   updateWorldChatFeatureStatus();
+  try {
+    syncEuSidebarAndTopbarNames();
+  } catch {
+    /* ignore */
+  }
   showToast('已设为当前用户画像（故事书对话生效）', 'success');
 }
 
@@ -9804,7 +9854,7 @@ function buildStorybookRuntimeSystemMessages(liveProfile, charName = 'AI') {
   const order = Array.isArray(promptOrder?.[0]?.order) ? promptOrder[0].order : [];
   const byId = new Map(prompts.map(p => [String(p?.identifier || ''), p]));
   const vars = {
-    user: state.currentUser || 'user',
+    user: getStEffectiveUserNameForMacros(),
     char: charName,
     description: sectionMap.char_description || '',
     personality: sectionMap.char_personality || '',
@@ -10961,17 +11011,10 @@ async function fetchStLiveGenerationProfile() {
   }
 }
 
-/** 与酒馆主界面一致：`request.body.user_name` 参与宏 `{{user}}` 等替换。EU 优先用「用户画像」名称，其次登录名。 */
+/** 与酒馆主界面一致：`request.body.user_name` 参与宏 `{{user}}` 等替换。与 getEuPublicDisplayName 一致（显示名称优先）。 */
 function getStEffectiveUserNameForMacros() {
-  try {
-    const persona = typeof getActiveUserPersona === 'function' ? getActiveUserPersona() : null;
-    const personaName = String(persona?.name || '').trim();
-    if (personaName) return personaName;
-  } catch {
-    /* ignore */
-  }
-  const login = String(state.currentUser || '').trim();
-  if (login && login.toLowerCase() !== 'guest') return login;
+  const n = String(getEuPublicDisplayName() || '').trim();
+  if (n && n !== 'guest') return n;
   return 'user';
 }
 
@@ -12025,12 +12068,7 @@ let euTiebaSessionCache = { loggedIn: false, handle: null, profileName: null, ca
 let euTiebaCurrentThreadId = null;
 
 function getEuTiebaAuthorDisplayNameForPost() {
-  const ap = loadEuAccountProfile();
-  const nick = String(ap.displayName || '').trim().slice(0, 64);
-  if (nick) return nick;
-  const pn = String(euTiebaSessionCache.profileName || '').trim().slice(0, 64);
-  if (pn) return pn;
-  return String(state.currentUser || euTiebaSessionCache.handle || '').trim();
+  return getEuPublicDisplayName();
 }
 
 /** 版主链，或开发者模式 + 已登录（非版主删帖需 URL ?euTiebaDev=1 且 JSON 体 euTiebaDev，服务端据此放行）。 */
