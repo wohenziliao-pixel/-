@@ -24,6 +24,8 @@ import {
     revokeEuTiebaApiToken,
     getHandleFromEuTiebaApiToken,
 } from './eu-tieba-api-auth.js';
+import { isEuDevSuperUser } from './eu-dev-mode.js';
+import { EU_ROLES, hasAnyEuRole } from './eu-rbac.js';
 
 export const router = express.Router();
 
@@ -71,6 +73,9 @@ function saveBoardSync(data) {
  * @returns {boolean}
  */
 function canModerate(req) {
+    if (isEuDevSuperUser(req)) {
+        return true;
+    }
     const p = req.tiebaActorUser;
     if (!p) {
         return false;
@@ -78,8 +83,18 @@ function canModerate(req) {
     if (p.admin === true) {
         return true;
     }
+    if (hasAnyEuRole(p, [EU_ROLES.SUPER_ADMIN, EU_ROLES.TIEBA_MODERATOR])) {
+        return true;
+    }
     const h = String(p.handle || '').trim().toLowerCase();
     return EU_MANAGEMENT_HANDLES.has(h);
+}
+
+/** @param {string | undefined} a @param {string | undefined} b */
+function tiebaSameAuthor(a, b) {
+    const x = String(a || '').trim().toLowerCase();
+    const y = String(b || '').trim().toLowerCase();
+    return Boolean(x && y && x === y);
 }
 
 /**
@@ -121,35 +136,19 @@ function tiebaDeleteForbiddenDetail(req) {
     if (canModerate(req)) {
         return '无删帖权限（内部状态异常）';
     }
-    if (!getConfigValue('euTiebaDevBulkDelete', true, 'boolean')) {
-        return '无删帖权限：服务端已关闭 euTiebaDevBulkDelete。';
+    if (!req.tiebaActorHandle) {
+        return '无删帖权限：未识别灌水区身份。请先登录。';
     }
-    const handle = req.tiebaActorHandle;
-    if (!handle) {
-        return '无删帖权限：未识别灌水区身份。请使用酒馆登录会话，或 POST /api/eu/tieba/auth/session 获取灌水令牌后重试。';
-    }
-    if (!readEuTiebaDevClientFlag(req)) {
-        return '无删帖权限：未收到开发者删帖标记（JSON euTiebaDev / ?euTiebaDev=1）。请确认已开启 EU 开发者模式并硬刷新页面；若仍失败请重启 SillyTavern 以加载最新 eu-tieba 接口。';
-    }
-    return '无删帖权限';
+    return '无删帖权限：只能删除自己的帖子，或需要贴吧管理权限（tieba.moderator）';
 }
 
 /**
- * 是否允许删灌水帖/楼层：版主链，或（配置开启 + 开发者标识 + 已登录）。
+ * 是否允许删任意灌水帖/楼层（贴吧公用区管理者 / 网站管理者）。
  * @param {import('express').Request} req
  * @returns {boolean}
  */
-function canDeleteTiebaContent(req) {
-    if (canModerate(req)) {
-        return true;
-    }
-    if (!getConfigValue('euTiebaDevBulkDelete', true, 'boolean')) {
-        return false;
-    }
-    if (!readEuTiebaDevClientFlag(req)) {
-        return false;
-    }
-    return Boolean(req.tiebaActorHandle);
+function canDeleteAnyTiebaContent(req) {
+    return canModerate(req);
 }
 
 /**
@@ -186,15 +185,24 @@ function sanitizeAuthorDisplayName(raw, max = 64) {
 }
 
 /**
- * 发帖/回帖署名展示名：优先客户端传的 EU 昵称，否则酒馆 profile.name，最后为 handle。
+ * 发帖/回帖署名展示名：客户端显式昵称优先；若客户端传来的是「与 handle 相同」的占位串，
+ * 则改用酒馆用户档案 `name`（姓名），避免把登录标识误存成展示名、盖住档案里的昵称。
  * @param {import('express').Request} req
  * @param {unknown} bodyAuthorDisplayName
  * @param {string} handle
  */
 function resolveAuthorDisplayName(req, bodyAuthorDisplayName, handle) {
+    const h = String(handle || '').trim();
+    const hl = h.toLowerCase();
     const fromBody = sanitizeAuthorDisplayName(bodyAuthorDisplayName, 64);
     const profileName = sanitizeAuthorDisplayName(req.tiebaActorUser?.name, 64);
-    const h = String(handle || '').trim();
+    const bodyIsHandleLike = !fromBody || fromBody.toLowerCase() === hl;
+    if (!bodyIsHandleLike) {
+        return fromBody;
+    }
+    if (profileName && profileName.toLowerCase() !== hl) {
+        return profileName;
+    }
     return fromBody || profileName || h;
 }
 
@@ -209,6 +217,47 @@ function tiebaStoredDisplayLabel(authorHandle, authorDisplayName) {
         return d;
     }
     return String(authorHandle || '').trim();
+}
+
+/**
+ * 从用户库批量解析「比 handle 更有展示价值」的酒馆姓名（User.name）。
+ * @param {string[]} handles
+ * @returns {Promise<Map<string, string>>} key 为 handle 小写
+ */
+async function buildTiebaHandlePreferredDisplayMap(handles) {
+    const uniq = [...new Set((Array.isArray(handles) ? handles : []).map((x) => String(x || '').trim()).filter(Boolean))];
+    /** @type {Map<string, string>} */
+    const out = new Map();
+    for (const h of uniq) {
+        try {
+            const user = await storage.getItem(toKey(h));
+            const nm = sanitizeAuthorDisplayName(user?.name, 64);
+            if (nm && nm.toLowerCase() !== h.toLowerCase()) {
+                out.set(h.toLowerCase(), nm);
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+    return out;
+}
+
+/**
+ * 列表/详情 API：在存储的展示名为空或等于 handle 时，用用户库姓名覆盖。
+ * @param {string | undefined} authorHandle
+ * @param {string | undefined} authorDisplayName
+ * @param {Map<string, string>} prefMap
+ */
+function tiebaApiDisplayLabel(authorHandle, authorDisplayName, prefMap) {
+    const base = tiebaStoredDisplayLabel(authorHandle, authorDisplayName);
+    const h = String(authorHandle || '').trim();
+    if (!h) {
+        return base;
+    }
+    if (base.toLowerCase() !== h.toLowerCase()) {
+        return base;
+    }
+    return prefMap.get(h.toLowerCase()) || base;
 }
 
 const SNIPPET_MAX = 220;
@@ -595,6 +644,14 @@ router.get('/threads', async (req, res) => {
     try {
         await queueBoard(async () => {
             const data = loadBoardSync();
+            const handles = [];
+            for (const t of data.threads) {
+                handles.push(t.authorHandle);
+                for (const r of Array.isArray(t.replies) ? t.replies : []) {
+                    handles.push(r.authorHandle);
+                }
+            }
+            const prefMap = await buildTiebaHandlePreferredDisplayMap(handles);
             const threads = data.threads.map((t) => {
                 const replies = Array.isArray(t.replies) ? t.replies : [];
                 const lastReply = replies.length ? replies[replies.length - 1].createdAt : null;
@@ -604,7 +661,7 @@ router.get('/threads', async (req, res) => {
                     id: t.id,
                     title: t.title,
                     authorHandle: t.authorHandle,
-                    authorDisplayName: tiebaStoredDisplayLabel(t.authorHandle, t.authorDisplayName),
+                    authorDisplayName: tiebaApiDisplayLabel(t.authorHandle, t.authorDisplayName, prefMap),
                     createdAt: t.createdAt,
                     replyCount: replies.length,
                     lastActivityAt,
@@ -633,7 +690,27 @@ router.get('/thread/:id', async (req, res) => {
             if (!thread) {
                 return res.status(404).json({ error: '主题不存在' });
             }
-            return res.json({ thread: normalizeThread(thread) });
+            const handles = [thread.authorHandle];
+            for (const r of Array.isArray(thread.replies) ? thread.replies : []) {
+                handles.push(r.authorHandle);
+            }
+            const prefMap = await buildTiebaHandlePreferredDisplayMap(handles);
+            const nt = normalizeThread(thread);
+            const rawReplies = Array.isArray(thread.replies) ? thread.replies : [];
+            const enrichedReplies = nt.replies.map((r, idx) => {
+                const raw = rawReplies[idx];
+                return {
+                    ...r,
+                    authorDisplayName: tiebaApiDisplayLabel(raw?.authorHandle, raw?.authorDisplayName, prefMap),
+                };
+            });
+            return res.json({
+                thread: {
+                    ...nt,
+                    authorDisplayName: tiebaApiDisplayLabel(thread.authorHandle, thread.authorDisplayName, prefMap),
+                    replies: enrichedReplies,
+                },
+            });
         });
     } catch (e) {
         console.error('[eu-tieba] GET /thread', e);
@@ -718,9 +795,8 @@ router.post('/reply', async (req, res) => {
 });
 
 router.delete('/thread/:id', async (req, res) => {
-    if (!canDeleteTiebaContent(req)) {
-        return res.status(403).json({ error: tiebaDeleteForbiddenDetail(req) });
-    }
+    const actor = requireTiebaActor(req, res);
+    if (!actor) return;
     const id = String(req.params.id || '').trim();
     if (!THREAD_ID_RE.test(id)) {
         return res.status(400).json({ error: '无效的主题 ID' });
@@ -731,6 +807,11 @@ router.delete('/thread/:id', async (req, res) => {
             const idx = data.threads.findIndex((x) => x.id === id);
             if (idx < 0) {
                 return res.status(404).json({ error: '主题不存在' });
+            }
+            const thread = data.threads[idx];
+            const allowed = canDeleteAnyTiebaContent(req) || tiebaSameAuthor(actor, thread?.authorHandle);
+            if (!allowed) {
+                return res.status(403).json({ error: tiebaDeleteForbiddenDetail(req) });
             }
             data.threads.splice(idx, 1);
             saveBoardSync(data);
@@ -743,9 +824,8 @@ router.delete('/thread/:id', async (req, res) => {
 });
 
 router.delete('/reply', async (req, res) => {
-    if (!canDeleteTiebaContent(req)) {
-        return res.status(403).json({ error: tiebaDeleteForbiddenDetail(req) });
-    }
+    const actor = requireTiebaActor(req, res);
+    if (!actor) return;
     const threadId = String(req.body?.threadId || '').trim();
     const replyId = String(req.body?.replyId || '').trim();
     if (!THREAD_ID_RE.test(threadId) || !REPLY_ID_RE.test(replyId)) {
@@ -764,6 +844,11 @@ router.delete('/reply', async (req, res) => {
             const ridx = thread.replies.findIndex((x) => x.id === replyId);
             if (ridx < 0) {
                 return res.status(404).json({ error: '楼层不存在' });
+            }
+            const reply = thread.replies[ridx];
+            const allowed = canDeleteAnyTiebaContent(req) || tiebaSameAuthor(actor, reply?.authorHandle);
+            if (!allowed) {
+                return res.status(403).json({ error: tiebaDeleteForbiddenDetail(req) });
             }
             thread.replies.splice(ridx, 1);
             saveBoardSync(data);
@@ -841,8 +926,8 @@ router.post('/upload-image', async (req, res) => {
 });
 
 /** 灌水区展示用头像：写入当前酒馆登录用户的 slug 对应文件。 */
-const TIEBA_AVATAR_MAX_LONG_EDGE = 512;
-const TIEBA_AVATAR_JPEG_QUALITY = 88;
+const TIEBA_AVATAR_MAX_LONG_EDGE = 320;
+const TIEBA_AVATAR_JPEG_QUALITY = 76;
 const TIEBA_AVATAR_MAX_PIXELS = 8_000_000;
 const TIEBA_AVATAR_MAX_B64_CHARS = 2_800_000;
 

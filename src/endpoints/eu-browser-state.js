@@ -1,6 +1,6 @@
 /**
  * EU 商城 / 故事书相关浏览器状态：按酒馆登录用户落盘到 DATA_ROOT/<handle>/eu-mall-browser-state.json，
- * 便于换设备或部署到线上后同一账号自动拉取（与 eu-demo localStorage 中 eu_demo_dev_items / 已获取列表等对应）。
+ * 便于换设备或部署到线上后同一账号自动拉取（与 eu-demo localStorage 中 eu_demo_dev_items / 已获取列表 / 个人资料 JSON 等对应）。
  */
 import express from 'express';
 import fs from 'node:fs';
@@ -23,13 +23,26 @@ function isAllowedKey(handle, key) {
     if (!h || !k) {
         return false;
     }
-    if (k === 'eu_demo_dev_items') {
+    if (
+        k === 'eu_demo_dev_items' ||
+        k === 'eu_demo_dev_heavy' ||
+        k === 'eu_demo_dev_items_manifest' ||
+        k === 'eu_demo_dev_items_storybook' ||
+        k === 'eu_demo_dev_items_setting' ||
+        k === 'eu_demo_dev_items_character'
+    ) {
         return true;
     }
     if (k === `eu_demo_acquired_items_${h}`) {
         return true;
     }
+    if (k === `eu_demo_acquired_meta_v1_${h}`) {
+        return true;
+    }
     if (k === `eu_demo_mall_hidden_uids_${h}`) {
+        return true;
+    }
+    if (k === `eu_demo_account_profile_${h}`) {
         return true;
     }
     return false;
@@ -94,6 +107,9 @@ router.post('/', jsonBody, (req, res) => {
                 continue;
             }
             if (typeof val !== 'string') {
+                continue;
+            }
+            if (key.startsWith('eu_demo_account_profile_') && val.length > 120_000) {
                 continue;
             }
             merged.items[key] = val;

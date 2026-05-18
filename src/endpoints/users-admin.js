@@ -16,6 +16,7 @@ import {
     ensurePublicDirectoriesExist,
 } from '../users.js';
 import { DEFAULT_USER } from '../constants.js';
+import { EU_ROLES, appendEuAuditLog, getEuRoleSet, setEuRoles } from './eu-rbac.js';
 
 export const router = express.Router();
 
@@ -50,6 +51,7 @@ router.post('/get', requireAdminMiddleware, async (_request, response) => {
                         enabled: user.enabled,
                         created: user.created,
                         password: !!user.password,
+                        euRoles: [...getEuRoleSet(user)].sort(),
                     }),
                 );
             }));
@@ -260,6 +262,73 @@ router.post('/slugify', requireAdminMiddleware, async (request, response) => {
         return response.send(text);
     } catch (error) {
         console.error('Slugify failed:', error);
+        return response.sendStatus(500);
+    }
+});
+
+router.post('/eu/roles/get', requireAdminMiddleware, async (_request, response) => {
+    try {
+        /** @type {import('../users.js').User[]} */
+        const users = await storage.values(x => x.key.startsWith(KEY_PREFIX));
+        const out = users.map((user) => ({
+            handle: user.handle,
+            roles: [...getEuRoleSet(user)].sort(),
+        }));
+        return response.json({ users: out, availableRoles: Object.values(EU_ROLES) });
+    } catch (error) {
+        console.error('EU role list failed:', error);
+        return response.sendStatus(500);
+    }
+});
+
+router.post('/eu/roles/grant', requireAdminMiddleware, async (request, response) => {
+    try {
+        const handle = String(request.body?.handle || '').trim();
+        const role = String(request.body?.role || '').trim();
+        if (!handle || !role) {
+            return response.status(400).json({ error: 'Missing handle or role' });
+        }
+        if (!Object.values(EU_ROLES).includes(role)) {
+            return response.status(400).json({ error: 'Unknown role' });
+        }
+        /** @type {import('../users.js').User} */
+        const user = await storage.getItem(toKey(handle));
+        if (!user) {
+            return response.status(404).json({ error: 'User not found' });
+        }
+        const nextRoles = [...getEuRoleSet(user), role];
+        const updated = setEuRoles(user, nextRoles);
+        await storage.setItem(toKey(handle), updated);
+        appendEuAuditLog(request.user?.profile?.handle, 'eu_role_grant', { handle, role });
+        return response.json({ handle, roles: [...getEuRoleSet(updated)].sort() });
+    } catch (error) {
+        console.error('EU role grant failed:', error);
+        return response.sendStatus(500);
+    }
+});
+
+router.post('/eu/roles/revoke', requireAdminMiddleware, async (request, response) => {
+    try {
+        const handle = String(request.body?.handle || '').trim();
+        const role = String(request.body?.role || '').trim();
+        if (!handle || !role) {
+            return response.status(400).json({ error: 'Missing handle or role' });
+        }
+        if (handle === request.user.profile.handle && role === EU_ROLES.SUPER_ADMIN) {
+            return response.status(400).json({ error: 'Cannot revoke own super.admin role' });
+        }
+        /** @type {import('../users.js').User} */
+        const user = await storage.getItem(toKey(handle));
+        if (!user) {
+            return response.status(404).json({ error: 'User not found' });
+        }
+        const nextRoles = [...getEuRoleSet(user)].filter((x) => x !== role);
+        const updated = setEuRoles(user, nextRoles);
+        await storage.setItem(toKey(handle), updated);
+        appendEuAuditLog(request.user?.profile?.handle, 'eu_role_revoke', { handle, role });
+        return response.json({ handle, roles: [...getEuRoleSet(updated)].sort() });
+    } catch (error) {
+        console.error('EU role revoke failed:', error);
         return response.sendStatus(500);
     }
 });

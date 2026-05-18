@@ -65,6 +65,9 @@ import { router as usersPublicRouter } from './endpoints/users-public.js';
 import { router as euAuthRouter } from './endpoints/eu-auth.js';
 import { router as euTiebaRouter } from './endpoints/eu-tieba.js';
 import { router as euBrowserStateRouter } from './endpoints/eu-browser-state.js';
+import { router as euMallResourcesRouter } from './endpoints/eu-mall-resources.js';
+import { router as euRbacRoutesRouter } from './endpoints/eu-rbac-routes.js';
+import { router as euDevModeRouter } from './endpoints/eu-dev-mode.js';
 import { skipEuTiebaCsrf } from './endpoints/eu-tieba-api-auth.js';
 import { init as statsInit, onExit as statsOnExit } from './endpoints/stats.js';
 import { checkForNewContent } from './endpoints/content-manager.js';
@@ -207,6 +210,23 @@ if (!cliArgs.disableCsrf) {
     });
 }
 
+/** EU 次元姬：正式 URL 不含 demo；旧书签 308 到 eu.html / eu-mobile-preview.html */
+function mountEuLegacyPageRedirects(app) {
+    const pairs = [
+        ['/eu-demo.html', '/eu.html'],
+        ['/eu-demo-mobile-preview.html', '/eu-mobile-preview.html'],
+        ['/eu-demo.from-network.html', '/eu.html'],
+        ['/au.html', '/eu.html'],
+    ];
+    for (const [from, to] of pairs) {
+        app.get(from, (req, res) => {
+            const q = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+            res.redirect(308, to + q);
+        });
+    }
+}
+mountEuLegacyPageRedirects(app);
+
 // Static files
 // Host index page
 app.get('/', cacheBuster.middleware, (request, response) => {
@@ -245,8 +265,12 @@ app.use('/api/eu/tieba', euTiebaRouter);
 
 // Everything below this line requires authentication
 app.use(requireLoginMiddleware);
-/** EU：商城 / 故事书相关 localStorage 键按账号同步到 data/<handle>/eu-mall-browser-state.json */
+/** EU：商城 / 故事书 / EU 个人资料等 localStorage 白名单键按账号同步到 data/<handle>/eu-mall-browser-state.json */
 app.use('/api/eu/browser-state', euBrowserStateRouter);
+/** EU：公共商城资源（RBAC + 公共索引/内容分层） */
+app.use('/api/eu/mall', euMallResourcesRouter);
+app.use('/api/eu/dev', euDevModeRouter);
+app.use('/api/eu/rbac', euRbacRoutesRouter);
 app.post('/api/ping', (request, response) => {
     if (request.query.extend && request.session) {
         request.session.touch = Date.now();
