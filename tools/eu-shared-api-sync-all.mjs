@@ -5,8 +5,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyEuSharedApiProfile, getEuSharedApiSourceHandle } from '../src/endpoints/eu-shared-api.js';
-import { getUserDirectories } from '../src/users.js';
+import { initConfig } from '../src/config-init.js';
+import { getConfigValue } from '../src/util.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
@@ -17,28 +17,44 @@ const SKIP = new Set([
     'eu-public', 'eu-audit', 'eu-tieba-avatars', 'eu-tieba-media',
 ]);
 
-const src = getEuSharedApiSourceHandle();
-if (!src) {
-    console.error('config.yaml 未设置 euSharedApiFromHandle');
+async function main() {
+    initConfig(path.join(repoRoot, 'config.yaml'));
+    const dataRootCfg = String(getConfigValue('dataRoot', './data', 'string') || './data');
+    globalThis.DATA_ROOT = path.isAbsolute(dataRootCfg)
+        ? dataRootCfg
+        : path.resolve(repoRoot, dataRootCfg);
+
+    const { applyEuSharedApiProfile, getEuSharedApiSourceHandle } = await import('../src/endpoints/eu-shared-api.js');
+    const { getUserDirectories } = await import('../src/users.js');
+
+    const src = getEuSharedApiSourceHandle();
+    if (!src) {
+        console.error('config.yaml 未设置 euSharedApiFromHandle');
+        process.exit(1);
+    }
+
+    let ok = 0;
+    let skip = 0;
+    for (const name of fs.readdirSync(dataRoot)) {
+        if (SKIP.has(name) || name === src) {
+            skip++;
+            continue;
+        }
+        const p = path.join(dataRoot, name);
+        if (!fs.statSync(p).isDirectory()) {
+            continue;
+        }
+        const r = applyEuSharedApiProfile(getUserDirectories(name));
+        console.log(name, r);
+        if (r.applied) {
+            ok++;
+        }
+    }
+
+    console.log(`完成：套用 ${ok} 个用户，跳过 ${skip} 个目录/源账号`);
+}
+
+main().catch((e) => {
+    console.error(e);
     process.exit(1);
-}
-
-let ok = 0;
-let skip = 0;
-for (const name of fs.readdirSync(dataRoot)) {
-    if (SKIP.has(name) || name === src) {
-        skip++;
-        continue;
-    }
-    const p = path.join(dataRoot, name);
-    if (!fs.statSync(p).isDirectory()) {
-        continue;
-    }
-    const r = applyEuSharedApiProfile(getUserDirectories(name));
-    console.log(name, r);
-    if (r.applied) {
-        ok++;
-    }
-}
-
-console.log(`完成：套用 ${ok} 个用户，跳过 ${skip} 个目录/源账号`);
+});
