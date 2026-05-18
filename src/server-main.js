@@ -228,15 +228,10 @@ function mountEuLegacyPageRedirects(app) {
 mountEuLegacyPageRedirects(app);
 
 // Static files
-// Host index page
+// 根路径直连次元姬 EU；原版酒馆仍可通过 /index.html 访问
 app.get('/', cacheBuster.middleware, (request, response) => {
-    if (shouldRedirectToLogin(request)) {
-        const query = request.url.split('?')[1];
-        const redirectUrl = query ? `/login?${query}` : '/login';
-        return response.redirect(redirectUrl);
-    }
-
-    return response.sendFile('index.html', { root: path.join(serverDirectory, 'public') });
+    const q = request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : '';
+    return response.redirect(308, '/eu.html' + q);
 });
 
 // Callback endpoint for OAuth PKCE flows (e.g. OpenRouter)
