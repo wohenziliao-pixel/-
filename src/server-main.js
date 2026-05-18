@@ -63,6 +63,7 @@ import { UPLOADS_DIRECTORY } from './constants.js';
 // Routers
 import { router as usersPublicRouter } from './endpoints/users-public.js';
 import { router as euAuthRouter } from './endpoints/eu-auth.js';
+import { syncRouter as euSharedApiSyncRouter } from './endpoints/eu-shared-api.js';
 import { router as euTiebaRouter } from './endpoints/eu-tieba.js';
 import { router as euBrowserStateRouter } from './endpoints/eu-browser-state.js';
 import { router as euMallResourcesRouter } from './endpoints/eu-mall-resources.js';
@@ -260,6 +261,8 @@ app.use('/api/eu/tieba', euTiebaRouter);
 
 // Everything below this line requires authentication
 app.use(requireLoginMiddleware);
+/** EU：已登录用户重新套用 config.euSharedApiFromHandle 的 API 配置 */
+app.use('/api/eu/shared-api', euSharedApiSyncRouter);
 /** EU：商城 / 故事书 / EU 个人资料等 localStorage 白名单键按账号同步到 data/<handle>/eu-mall-browser-state.json */
 app.use('/api/eu/browser-state', euBrowserStateRouter);
 /** EU：公共商城资源（RBAC + 公共索引/内容分层） */

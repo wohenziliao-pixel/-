@@ -1909,8 +1909,12 @@ body.eu-page-chatroom .main-content {
   padding: 14px 16px;
   display: flex;
   gap: 10px;
-  align-items: center;
+  align-items: stretch;
   position: relative;
+}
+.bottom-input-bar .card > #assistant-input {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .bottom-input-bar .tools-trigger {
   width: 42px;
@@ -2195,7 +2199,9 @@ label.eu-add-character-pick input {
   }
 }
 .bottom-input-bar textarea {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
   resize: none;
   border: none;
   background: var(--panel-soft);
@@ -2208,24 +2214,6 @@ label.eu-add-character-pick input {
   outline: none;
 }
 .bottom-input-bar textarea::placeholder { color: var(--muted); }
-.bottom-input-bar .send-btn {
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border-radius: 10px;
-  background: var(--primary);
-  border: none;
-  color: white;
-  font-size: 1.2rem;
-  cursor: pointer;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: opacity 0.2s;
-}
-.bottom-input-bar .send-btn:hover { opacity: 0.85; }
-
 /* 移动端底栏须写在本段之后，否则会被上方 .bottom-input-bar { left:220px } 覆盖 */
 @media (max-width: 900px) {
   .bottom-input-bar {
@@ -7899,22 +7887,18 @@ async function tryRestoreEuAppSession() {
     }
     const probe = await euProbeStSession();
     if (!probe.loggedIn) {
+      if (!probe.routeOk) {
+        console.warn('[EU] tryRestoreEuAppSession: /api/eu/dev 不可用，请确认 SillyTavern 已从本仓库启动');
+      }
       showEuLoginPageLayout({ clearLoginForm: false, prefillUser: h });
       const st = document.getElementById('login-status');
       if (st) {
-        st.textContent = probe.routeOk
-          ? '本地已记住账号，但酒馆会话已失效。请重新输入密码登录后再使用开发者模式与商城同步。'
-          : '服务端未加载 EU 开发者 API（/api/eu/dev 不可用）。请完全退出 SillyTavern 后从本仓库重新启动，端口与地址栏一致。';
-        st.className = 'status warning';
+        st.textContent = '';
+        st.className = 'status';
       }
       return;
     }
-    showEuLoginPageLayout({ clearLoginForm: false, prefillUser: h });
-    const st = document.getElementById('login-status');
-    if (st) {
-      st.textContent = '已检测到登录会话，请输入密码后点「登录」。';
-      st.className = 'status success';
-    }
+    enterApp(h, { lite: true });
     return;
   } catch (e) {
     console.warn('[EU] tryRestoreEuAppSession', e);
@@ -7968,6 +7952,7 @@ function enterApp(username, opts = {}) {
   console.log('enterApp called with:', h, lite ? '(lite)' : '');
   state.stCsrfToken = '';
   state.currentUser = h;
+  void euSyncSharedApiFromServer();
   state.euSafeLiteMode = lite;
   state.euDevItemsDeferBulkLoad = lite;
   state.__euDeferredInitDone = lite;
@@ -12603,8 +12588,6 @@ function dismissDevBulkDeleteToast() {}
 <div class="bottom-input-bar" id="bottom-input-bar">
   <div class="card">
     <button id="chat-tools-trigger" class="tools-trigger" type="button" title="脚本工具" onclick="toggleChatToolsMenu(event)">☰</button>
-    <button id="world-regen-btn" class="tools-trigger" type="button" title="重新生成上一条 AI 回复" onclick="handleWorldChatRegenerate(event)">↻</button>
-    <button id="world-continue-btn" class="tools-trigger" type="button" title="续写（接在上一条 AI 回复之后）" onclick="handleWorldChatContinue(event)">➤</button>
     <button id="chat-ai-assist-trigger" class="tools-trigger" type="button" title="AI帮答" onclick="toggleAiAssistPanel(event)">💡</button>
     <div id="chat-tools-menu" class="chat-tools-menu" role="menu" aria-hidden="true">
       <button class="chat-tools-item" type="button" onclick="handleChatToolAction('new-rule')"><span class="icon">🧩</span><span>新增规则</span></button>
@@ -12615,10 +12598,9 @@ function dismissDevBulkDeleteToast() {}
     </div>
     <div id="chat-ai-assist-panel" class="chat-ai-assist-panel" aria-hidden="true">
       <div class="chat-ai-assist-title">AI帮答：点击草稿可填入输入框（不自动发送）</div>
-      <div id="chat-ai-assist-body" class="chat-ai-assist-hint">点击左侧三杠里的“AI帮答”后生成草稿</div>
+      <div id="chat-ai-assist-body" class="chat-ai-assist-hint">点击左侧 💡 生成草稿，点草稿填入输入框（不自动发送）</div>
     </div>
-    <textarea id="assistant-input" placeholder="输入消息..." onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendMessage();}"></textarea>
-    <button class="send-btn" onclick="sendMessage()">&#10148;</button>
+    <textarea id="assistant-input" placeholder="输入消息…（Enter 发送，Shift+Enter 换行）" onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendMessage();}"></textarea>
   </div>
 </div>
 
@@ -13276,11 +13258,9 @@ function isWorldChatPageActive() {
 
 function updateBottomChatActionVisibility() {
   const toolBtn = document.getElementById('chat-tools-trigger');
-  const regenBtn = document.getElementById('world-regen-btn');
-  const contBtn = document.getElementById('world-continue-btn');
   const bulbBtn = document.getElementById('chat-ai-assist-trigger');
   const allow = isWorldChatPageActive();
-  [toolBtn, regenBtn, contBtn, bulbBtn].forEach((el) => {
+  [toolBtn, bulbBtn].forEach((el) => {
     if (!el) return;
     el.classList.toggle('hidden-by-context', !allow);
   });
@@ -14177,7 +14157,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260516-opening-from-desc-v45';
+const EU_CLIENT_BUILD_STAMP = '20260518-bottom-bar-v48';
 const EU_XAI_DEFAULT_MODEL = 'grok-4.3';
 const EU_RUNTIME_HEALTH = {
   consecutiveStErrors: 0,
@@ -14790,6 +14770,10 @@ function euBuildStGenerationSnapshotFromSettingsGetData(data) {
   let chatSource = String(mergedPreset?.chat_completion_source || liveOai?.chat_completion_source || 'openai');
   const chatSourceBeforeInfer = chatSource;
   chatSource = inferChatCompletionSourceForGrok(mergedPreset, liveOai, chatSource);
+  if (String(chatSource).toLowerCase() === 'openai') {
+    const xaiModelHint = String(mergedPreset?.xai_model ?? liveOai?.xai_model ?? '').trim();
+    if (xaiModelHint) chatSource = 'xai';
+  }
   let resolvedModel = resolveStPresetModel(mergedPreset, liveOai, chatSource);
   if (!resolvedModel && String(chatSource).toLowerCase() === 'xai') {
     const p = mergedPreset;
@@ -18474,6 +18458,26 @@ async function euPushMallBrowserStateNow(opts = {}) {
     if (!res.ok) return;
   } catch (e) {
     console.warn('[EU] mall browser state push skipped', e?.message || e);
+  }
+}
+
+/** 登录后套用站长 API（config.euSharedApiFromHandle），并刷新 settings 缓存。 */
+async function euSyncSharedApiFromServer() {
+  const handle = String(state.currentUser || '').trim();
+  if (!handle || handle === 'guest') return null;
+  try {
+    stLiveConfigCache = null;
+    stLiveConfigAt = 0;
+    const res = await stApiPost('/api/eu/shared-api/sync', {});
+    if (!res.ok) {
+      const err = await euSafeHttpJson(res).catch(() => ({}));
+      console.warn('[EU] shared-api sync', res.status, err?.reason || err?.error || '');
+      return null;
+    }
+    return await euSafeHttpJson(res);
+  } catch (e) {
+    console.warn('[EU] shared-api sync failed', e?.message || e);
+    return null;
   }
 }
 
