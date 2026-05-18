@@ -16,6 +16,7 @@ import {
     getAllUserHandles,
 } from '../users.js';
 import { checkForNewContent, CONTENT_TYPES } from './content-manager.js';
+import { applyEuSharedApiProfile } from './eu-shared-api.js';
 import storage from 'node-persist';
 
 const PREFER_REAL_IP_HEADER = getConfigValue('rateLimiting.preferRealIpHeader', false, 'boolean');
@@ -91,6 +92,10 @@ router.post('/register', async (request, response) => {
         await ensurePublicDirectoriesExist();
         const directories = getUserDirectories(handle);
         await checkForNewContent([directories], [CONTENT_TYPES.SETTINGS]);
+        const sharedApi = applyEuSharedApiProfile(directories);
+        if (sharedApi.applied) {
+            console.info(color.green('[EU register] shared API from'), sharedApi.from, '→', handle);
+        }
         await registerLimiter.delete(ip);
         return response.json({ handle });
     } catch (error) {

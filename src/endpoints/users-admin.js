@@ -4,6 +4,7 @@ import storage from 'node-persist';
 import express from 'express';
 import lodash from 'lodash';
 import { checkForNewContent, CONTENT_TYPES } from './content-manager.js';
+import { applyEuSharedApiProfile } from './eu-shared-api.js';
 import {
     KEY_PREFIX,
     toKey,
@@ -211,6 +212,7 @@ router.post('/create', requireAdminMiddleware, async (request, response) => {
         await ensurePublicDirectoriesExist();
         const directories = getUserDirectories(newUser.handle);
         await checkForNewContent([directories], [CONTENT_TYPES.SETTINGS]);
+        applyEuSharedApiProfile(directories);
         return response.json({ handle: newUser.handle });
     } catch (error) {
         console.error('User create failed:', error);
