@@ -10530,6 +10530,16 @@ function removeConversationRuntime(charName, convKey = null) {
   };
 }
 
+function euConversationMatchesStorybookTitle(charName, conv, title) {
+  const t = String(title || '').trim();
+  if (!t) return false;
+  const name = String(charName || conv?.characterName || '').trim();
+  const disp = getConversationDisplayName(name);
+  if (disp === t || name === t || name === `故事书·${t}`) return true;
+  const metaTitle = String(conv?.metadata?.storybookTitle || '').trim();
+  return metaTitle === t;
+}
+
 function removeConversationRuntimeByStorybook(storybookUid = '', storybookTitle = '') {
   const uid = String(storybookUid || '').trim();
   const title = String(storybookTitle || '').trim();
@@ -10542,7 +10552,10 @@ function removeConversationRuntimeByStorybook(storybookUid = '', storybookTitle 
     const convBook = findStorybookByConversation(conv?.characterName || '', conv || null);
     const convUid = String(conv?.metadata?.storybookUid || convBook?.uid || '').trim();
     const convTitle = String(conv?.metadata?.storybookTitle || convBook?.title || '').trim();
-    if ((uid && convUid === uid) || (title && convTitle === title)) {
+    const titleHit =
+      title &&
+      (convTitle === title || euConversationMatchesStorybookTitle(conv?.characterName, conv, title));
+    if ((uid && convUid === uid) || titleHit) {
       keysToDelete.add(k);
     }
   });
@@ -10594,6 +10607,34 @@ function confirmDelete(charName) {
   openDeleteConversationModal(charName, convKey);
 }
 
+/** 清理侧栏「我的世界」全部历史会话（与故事书库无关；删书库后残留会话用此或逐条点 ×）。 */
+async function euClearMyWorldHistorySessions() {
+  const chars = typeof getCharacters === 'function' ? getCharacters() : [];
+  if (!chars.length) {
+    showToast('暂无历史会话', 'warning');
+    return;
+  }
+  const ok = confirm(
+    `确定清理「我的世界」中的 ${chars.length} 条历史会话吗？\n不会删除故事书库（当前 ${getStorybookItems().length} 本）；仅移除聊天记录与侧栏条目。`,
+  );
+  if (!ok) return;
+  let removed = 0;
+  for (const row of [...chars]) {
+    const r = removeConversationRuntime(row.name, row.sessionKey);
+    removed += Number(r?.removedCount || 0);
+  }
+  try {
+    await runBackendAuxiliary('deleteConversationFiles', { storybookUid: '', storybookTitle: '', conversations: [] });
+  } catch {
+    /* ignore */
+  }
+  persistConversationRuntime();
+  void euPushConversationCloudNow().catch(() => {});
+  updateWorldSubmenu();
+  updateWorldChatFeatureStatus();
+  showToast(removed > 0 ? `已清理 ${removed} 条历史会话` : '未找到可清理的会话', removed > 0 ? 'success' : 'warning');
+}
+
 async function doDelete() {
   const btn = document.getElementById('confirm-delete-btn');
   btn.disabled = true;
@@ -10619,6 +10660,7 @@ async function doDelete() {
   btn.disabled = false;
   hideModal('delete-modal');
   if (removedCount > 0) {
+    void euPushConversationCloudNow().catch(() => {});
     updateWorldSubmenu();
     const label = getConversationDisplayName(name);
     showToast(
@@ -15292,7 +15334,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260519-login-script-parse-fix-v88';
+const EU_CLIENT_BUILD_STAMP = '20260519-myworld-orphan-sessions-v89';
 
 const EU_VIRTUAL_LOVER_STYLE_SYSTEM =
   '【虚拟恋人对话模式】以你与用户的亲密对话为主：每轮以直接对白为主体，可穿插 0～2 处极短动作/神态（括号或一行，每处不超过 20 字）。禁止大段场景铺陈、环境描写、旁白小说式铺排；不要写「根据设定」「作为 AI」等元话术。';
@@ -24018,10 +24060,15 @@ async function filterStorybooks() {
 
   if (filtered.length === 0) {
     const nAcq = getAcquiredSet().size;
-    const hintExtra =
+    const nWorld = typeof getCharacters === 'function' ? getCharacters().length : 0;
+    let hintExtra =
       nAcq > 0
         ? '<br><span style="font-size:13px;">已获取列表有记录但类型不匹配或已被过滤，可在商城重新获取。</span>'
         : '<br><span style="font-size:13px;">请先在「商城」点获取；若曾获取过，稍候会自动从账号同步。</span>';
+    if (nWorld > 0) {
+      hintExtra += `<br><span style="font-size:13px;margin-top:8px;display:inline-block;">侧栏「我的世界」仍有 ${nWorld} 条历史会话，与故事书库无关。</span>`;
+      hintExtra += `<br><button type="button" class="btn-secondary" style="margin-top:12px;" onclick="void euClearMyWorldHistorySessions()">清理全部历史会话</button>`;
+    }
     grid.innerHTML = `<p style="text-align:center;color:var(--muted);padding:60px;">暂无故事书${hintExtra}</p>`;
     updateStorybookResultsInfoLine();
     if (sent) sent.style.display = 'none';
