@@ -122,6 +122,21 @@ function rowIsAdultForSfw(row) {
     return false;
 }
 
+function rowHasFemaleOrientationTag(row) {
+    const tags = Array.isArray(row?.tags) ? row.tags : [];
+    return tags.some((t) => /女性向/.test(String(t || '').trim()));
+}
+
+/** orientation: female | male | all；无「女性向」标签的条目归男性向。 */
+function rowPassesOrientationFilter(row, orientation) {
+    const o = String(orientation || '').trim().toLowerCase();
+    if (!o || o === 'all') return true;
+    const isFemale = rowHasFemaleOrientationTag(row);
+    if (o === 'female' || o === '女性向') return isFemale;
+    if (o === 'male' || o === '男性向') return !isFemale;
+    return true;
+}
+
 function sanitizeMetaRow(row) {
     let thumb = String(row.thumb || '').trim() || null;
     /** 索引里若误存了发布者私有路径，其他用户拉清单会导图到 /user/images → 全 404；只保留公共 thumb URL。 */
@@ -578,6 +593,10 @@ router.get('/resources', async (req, res) => {
     const sfwOnly = ['1', 'true', 'yes'].includes(String(req.query.sfw || req.query.allAges || '').trim().toLowerCase());
     if (sfwOnly) {
         rows = rows.filter((x) => !rowIsAdultForSfw(x));
+    }
+    const orientation = String(req.query.orientation || req.query.orient || '').trim();
+    if (orientation) {
+        rows = rows.filter((x) => rowPassesOrientationFilter(x, orientation));
     }
     const start = (page - 1) * pageSize;
     const items = rows.slice(start, start + pageSize).map((row) => {

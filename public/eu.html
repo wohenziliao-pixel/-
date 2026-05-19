@@ -316,6 +316,8 @@ button.btn-secondary { background: var(--panel-soft); border-color: var(--border
 }
 
 .nav-item-icon { font-size: 1.3rem; width: 28px; text-align: center; }
+#virtual-lover-nav-item .nav-item-icon { color: #ef4444; }
+#virtual-lover-submenu .world-submenu-avatar { color: #ef4444; }
 .nav-item-text { font-weight: 500; }
 .nav-item.has-submenu {
   display: flex;
@@ -455,12 +457,23 @@ button.btn-secondary { background: var(--panel-soft); border-color: var(--border
   border-radius: 0;
   padding: 0;
   line-height: 1.7;
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   color: #e5e7eb;
   white-space: pre-wrap;
 }
 #page-world-chat .chat-item.is-ai .chat-bubble {
   width: 100%;
+}
+#page-world-chat .chat-bubble.eu-readable-prose {
+  white-space: normal;
+}
+#page-world-chat .chat-bubble .eu-readable-p {
+  margin: 0 0 0.85em;
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+#page-world-chat .chat-bubble .eu-readable-p:last-child {
+  margin-bottom: 0;
 }
 .reply-token-badge {
   display: inline-block;
@@ -487,7 +500,8 @@ button.btn-secondary { background: var(--panel-soft); border-color: var(--border
   border: 1px solid rgba(96, 165, 250, 0.35);
   border-radius: 8px;
   padding: 8px 10px;
-  line-height: 1.55;
+  line-height: 1.58;
+  font-size: 1.05rem;
 }
 .streaming-cursor {
   display: inline-block;
@@ -1954,6 +1968,17 @@ body.eu-page-chatroom .main-content {
   z-index: 95;
 }
 .chat-tools-menu.open {
+  display: block;
+}
+.dev-partition-convert-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  bottom: auto;
+  min-width: 148px;
+  z-index: 40;
+}
+.dev-partition-convert-menu.open {
   display: block;
 }
 .chat-tools-item {
@@ -3760,10 +3785,18 @@ label.eu-add-character-pick input {
 
 .mall-filters {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 10px;
   padding: 16px 24px;
   border-bottom: 1px solid var(--border);
+  align-items: stretch;
+}
+
+.mall-filter-types {
+  display: flex;
   flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
 }
 
 .mall-filter-tag {
@@ -3786,6 +3819,76 @@ label.eu-add-character-pick input {
   background: var(--primary);
   border-color: var(--primary);
   color: white;
+}
+
+/* 取向：类型筛选下方，小图标钮（须覆盖全局 button{width:100%}） */
+.mall-orientation-filters {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.mall-filter-types .mall-filter-tag {
+  margin-top: 0 !important;
+}
+
+@media (max-width: 900px) {
+  .mall-filter-types {
+    flex-direction: column;
+  }
+  .mall-filter-types .mall-filter-tag {
+    width: 100% !important;
+  }
+}
+
+@media (min-width: 901px) {
+  .mall-filter-types .mall-filter-tag {
+    width: auto !important;
+  }
+}
+
+.mall-orientation-btn {
+  width: 36px !important;
+  height: 36px !important;
+  max-width: none;
+  margin: 0 !important;
+  padding: 0 !important;
+  min-width: 0 !important;
+  border-radius: 10px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--panel-soft) !important;
+  color: var(--muted) !important;
+  font-size: 1.15rem !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  cursor: pointer;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto !important;
+  white-space: nowrap;
+  box-shadow: none !important;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.mall-orientation-btn:hover {
+  filter: none !important;
+  border-color: var(--primary) !important;
+  background: var(--primary-soft) !important;
+  color: var(--text) !important;
+}
+
+.mall-orientation-btn.active {
+  border-color: var(--primary) !important;
+  background: rgba(99, 102, 241, 0.28) !important;
+  color: #e0e7ff !important;
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.35) !important;
 }
 
 .mall-content {
@@ -3900,14 +4003,33 @@ label.eu-add-character-pick input {
 
 .mall-card-desc {
   margin: 0 0 10px;
-  font-size: 0.86rem;
-  line-height: 1.5;
+  font-size: 0.96rem;
+  line-height: 1.52;
   color: var(--muted);
   display: -webkit-box;
   -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
   flex: 1;
+}
+.mall-card-desc.eu-desc-prose {
+  display: block;
+  -webkit-line-clamp: unset;
+  max-height: 7.5em;
+  overflow: hidden;
+}
+.mall-card-desc.eu-desc-prose .eu-readable-p {
+  margin: 0 0 0.55em;
+  font-size: 0.96rem;
+  line-height: 1.52;
+  color: var(--muted);
+}
+#modal-desc,
+#dev-desc,
+#mall-detail-desc-input {
+  font-size: 0.96rem;
+  white-space: pre-wrap;
+  line-height: 1.6;
 }
 
 @media (max-width: 600px) {
@@ -4196,6 +4318,14 @@ label.eu-add-character-pick input {
         <div class="submenu" id="world-submenu" style="display: none;">
           <!-- 动态生成的角色列表 -->
         </div>
+      </div>
+      <div class="nav-item has-submenu" id="virtual-lover-nav-item" data-eu-nav="virtual-lover">
+        <div class="nav-header" onclick="toggleVirtualLoverSubmenu()">
+          <span class="nav-item-icon">♥</span>
+          <span class="nav-item-text">虚拟恋人</span>
+          <span class="nav-arrow" id="virtual-lover-arrow">▶</span>
+        </div>
+        <div class="submenu" id="virtual-lover-submenu" style="display: none;"></div>
       </div>
       <div class="nav-item" data-eu-nav="settinglib" onclick="showPage('settinglib')">
         <span class="nav-item-icon">📚</span>
@@ -4659,22 +4789,25 @@ label.eu-add-character-pick input {
         <div class="mall-search-bar">
           <input type="text" class="mall-search-input" id="mall-search" placeholder="搜索故事书、设定集、角色卡..." oninput="filterMall()">
           <button class="mall-search-btn" onclick="filterMall()">🔍 搜索</button>
-          <button type="button" class="mall-export-btn" title="下载服务器完整索引 JSON" onclick="euDownloadMallIndexExport('json')">导出 JSON</button>
-          <button type="button" class="mall-export-btn" title="下载服务器完整索引 CSV" onclick="euDownloadMallIndexExport('csv')">导出 CSV</button>
         </div>
 
         <!-- 标签筛选 -->
         <div class="mall-filters">
-          <button class="mall-filter-tag active" data-type="all" onclick="setMallFilter('all', this)">全部</button>
-          <button class="mall-filter-tag" data-type="setting" onclick="setMallFilter('setting', this)">📚 设定集</button>
-          <button class="mall-filter-tag" data-type="storybook" onclick="setMallFilter('storybook', this)">📖 故事书</button>
-          <button class="mall-filter-tag" data-type="character" onclick="setMallFilter('character', this)">👤 角色卡</button>
+          <div class="mall-filter-types">
+            <button class="mall-filter-tag active" data-type="all" onclick="setMallFilter('all', this)">全部</button>
+            <button class="mall-filter-tag" data-type="setting" onclick="setMallFilter('setting', this)">📚 设定集</button>
+            <button class="mall-filter-tag" data-type="storybook" onclick="setMallFilter('storybook', this)">📖 故事书</button>
+            <button class="mall-filter-tag" data-type="character" onclick="setMallFilter('character', this)">👤 角色卡</button>
+          </div>
+          <div class="mall-orientation-filters" role="group" aria-label="取向筛选">
+            <button type="button" class="mall-orientation-btn" id="mall-filter-male" title="男性向" aria-label="男性向" onclick="setMallOrientationFilter('male', this)">♂</button>
+            <button type="button" class="mall-orientation-btn" id="mall-filter-female" title="女性向" aria-label="女性向" onclick="setMallOrientationFilter('female', this)">♀</button>
+          </div>
         </div>
 
         <!-- 商品网格 -->
         <div class="mall-content">
           <p class="mall-results-info" id="mall-results-info">资料库加载中…</p>
-          <p class="muted" style="font-size:0.82rem;margin:-8px 0 12px;padding:0 8px;">每页 10 条，底栏翻页；完整索引可导出 JSON/CSV</p>
           <div class="mall-grid" id="mall-grid"></div>
           <nav id="mall-pagination" class="mall-pagination" aria-label="商城分页">
             <button type="button" id="mall-page-prev" onclick="euMallGoPage(euMallCurrentPage - 1)">上一页</button>
@@ -4813,7 +4946,14 @@ label.eu-add-character-pick input {
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 10px;">
               <button type="button" class="btn-secondary" style="margin-top:0;" onclick="toggleSelectAllVisibleDevItems()">全选/清空可见</button>
               <button type="button" id="dev-bulk-delete-btn" class="btn-secondary" style="margin-top:0;border-color:rgba(239,68,68,.45);color:#fca5a5;" onclick="void bulkDeleteSelectedDevItems()">批量删除已勾选</button>
-              <button type="button" class="btn-secondary" style="margin-top:0;border-color:rgba(245,158,11,.45);color:#fcd34d;" onclick="cleanupGhostStorybooks()">清理幽灵故事书</button>
+              <div class="dev-partition-convert" style="position:relative;display:inline-block;">
+                <button type="button" id="dev-partition-convert-btn" class="btn-secondary" style="margin-top:0;border-color:rgba(99,102,241,.45);color:#c7d2fe;" onclick="euToggleDevPartitionConvertMenu(event)">转换分区 ▾</button>
+                <div id="dev-partition-convert-menu" class="chat-tools-menu dev-partition-convert-menu" role="menu" aria-label="转换分区">
+                  <button type="button" class="chat-tools-item" role="menuitem" onclick="void bulkConvertSelectedDevPartition('storybook')">📖 故事书</button>
+                  <button type="button" class="chat-tools-item" role="menuitem" onclick="void bulkConvertSelectedDevPartition('setting')">📚 设定集</button>
+                  <button type="button" class="chat-tools-item" role="menuitem" onclick="void bulkConvertSelectedDevPartition('character')">👤 角色卡</button>
+                </div>
+              </div>
               <span id="dev-bulk-selected-hint" class="muted" style="font-size:12px;line-height:30px;">已勾选 0 项</span>
             </div>
             <div id="dev-catalog-progress-wrap" class="dev-batch-import-progress-wrap" style="display:none;margin:0 0 10px;" aria-live="polite">
@@ -5353,7 +5493,7 @@ label.eu-add-character-pick input {
           <textarea id="chat-storybook-rules" rows="6" placeholder="示例：\n严格按当前剧情续写，不新增主线。\n只允许已登场角色发言。"></textarea>
         </label>
       </div>
-      <div class="chat-author-rule-title" style="margin-top:14px;">自动续写（对齐酒馆「用户设置 → 自动续写」）</div>
+      <div class="chat-author-rule-title" style="margin-top:14px;">字符控制</div>
       <p class="chat-author-rule-hint" style="margin:4px 0 8px;font-size:0.82rem;opacity:0.85;line-height:1.5;">仅对本故事书生效，语义对齐酒馆 <strong>用户设置 → 自动续写</strong>：用<strong>估算 token 数</strong>衡量<strong>当前整条 AI 气泡（多段续写合并后）</strong>是否仍低于「目标」；低于则再请求续写（最多 2 次嵌套）。单轮输出上限仍完全由酒馆 API 预设的 max_tokens 决定，不由此处目标改写。</p>
       <div class="chat-author-rule-grid">
         <label class="full eu-ac-row">
@@ -5437,12 +5577,18 @@ const state = {
   pendingDeleteChar: null,
   pendingDeleteConvKey: null,
   pendingMallItemUid: null,
+  pendingMallDetailContext: '',
   /** 刚获取、尚未写入 meta/LS 前的会话内行（故事书库立即展示用）。 */
   euPinnedAcquiredRows: [],
   /** 进对话前再拉商城全文，获取阶段不下载整卡（防 OOM）。 */
   euPendingFullResourceUid: '',
   activeStorybookUid: null,
   activeStorybookTitle: '',
+  activeVirtualLoverCardUid: null,
+  virtualLoverList: [],
+  euLastCharLibUid: '',
+  euLastCharLibAt: 0,
+  mallDetailContext: '',
   activeRegexRules: [],
   regexLoaded: false,
   chatHistory: [],
@@ -6172,6 +6318,89 @@ function getStorybookAutoContinueForGeneration() {
   });
 }
 
+function euComputeAutoContinueBudget(acIn) {
+  const ac = normalizeStorybookAutoContinue(acIn || getStorybookAutoContinueForGeneration());
+  const target = Math.max(0, Math.floor(Number(ac.targetTokens) || 0));
+  if (!ac.enabled || target <= 0) {
+    return { ...ac, targetTokens: target, minTokens: 0, maxTokens: 0 };
+  }
+  const minTokens = Math.max(64, Math.floor(target * 0.88));
+  const maxTokens = Math.min(8000, Math.ceil(target * 1.12));
+  return { ...ac, targetTokens: target, minTokens, maxTokens };
+}
+
+function buildAutoContinueSystemMessage(userText = '') {
+  const budget = euComputeAutoContinueBudget();
+  if (!budget.enabled || budget.maxTokens <= 0) return null;
+  const lines = [
+    '【字符控制 · 最高优先级】',
+    '本块优先于世界书摘录及卡内与之冲突的长度指令。',
+    `本条 assistant 回复估算 token 须在 ${budget.minTokens}–${budget.maxTokens}（目标约 ${budget.targetTokens}），严禁超过 ${budget.maxTokens}。`,
+    '写够后在区间内自然收束，以完整句/段结尾；不足过短视为未达标。',
+  ];
+  const rules = getActiveStorybookRules();
+  if (rules.length) {
+    lines.push('', '【本故事书用户规则】');
+    rules.forEach((r, i) => lines.push(`${i + 1}. ${r}`));
+  }
+  const ut = String(userText || '').trim();
+  if (ut) lines.push('', `用户本轮：${ut.slice(0, 120)}`);
+  return { role: 'system', content: lines.join('\n').trim(), identifier: 'euCharacterControl' };
+}
+
+function euPickContinuationUserPrompt() {
+  const b = euComputeAutoContinueBudget();
+  if (!b.enabled || b.maxTokens <= 0) {
+    return '请直接延续上一条回复，不要重复前文，从中断处继续完整说完。';
+  }
+  return [
+    '请紧接上文续写本条 assistant 回复，不要重复已写段落。',
+    `正文估算 token 须达到 ${b.minTokens}–${b.maxTokens}（目标约 ${b.targetTokens}），当前仍偏短则补足后自然收束。`,
+    '以完整句/段结尾，禁止半句截断。',
+  ].join('\n');
+}
+
+function euApplyAutoContinueMaxTokens(stPayload) {
+  if (!stPayload || typeof stPayload !== 'object') return;
+  const budget = euComputeAutoContinueBudget();
+  if (!budget.enabled || budget.maxTokens <= 0) return;
+  stPayload.max_tokens = Math.min(8000, Math.max(128, Math.ceil(budget.maxTokens * 1.06)));
+}
+
+function euRemainingAutoContinueTokens(accumulatedText = '') {
+  const budget = euComputeAutoContinueBudget();
+  if (!budget.enabled || budget.maxTokens <= 0) return 0;
+  const remain = budget.maxTokens - estimateTokenCount(accumulatedText);
+  return remain <= 48 ? 0 : Math.min(8000, Math.ceil(remain * 1.06));
+}
+
+/** 进会话时：故事书 meta store → 当前会话 metadata，避免刷新后会话快照仍是默认关/500。 */
+function hydrateAuthorRuleFromStorybookStore(conv = null) {
+  const c = conv || getActiveConversation();
+  if (!c) return false;
+  const key = getStoryRuleBookKey(c);
+  if (!key) return false;
+  const bundle = readStorybookMetaBundle(key);
+  const ruleStore = getStoryRuleStore();
+  const rules = Array.isArray(ruleStore[key]) ? ruleStore[key] : [];
+  c.metadata = c.metadata || {};
+  c.metadata.authorRule = {
+    storybookRules: rules.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 20),
+    storybookAutoContinue: normalizeStorybookAutoContinue(bundle.autoContinue || {}),
+  };
+  c.updatedAt = Date.now();
+  if (typeof persistConversationRuntime === 'function') persistConversationRuntime();
+  if (typeof updateWorldChatFeatureStatus === 'function') updateWorldChatFeatureStatus();
+  return true;
+}
+
+/** 续写判定：用 raw 与净稿中较大 token，避免净稿被削短后误判为无需续写。 */
+function euEstimateReplyTokensForContinue(rawText = '', sanitizedText = '') {
+  const raw = String(rawText || '').trim();
+  const clean = String(sanitizedText || '').trim();
+  return Math.max(estimateTokenCount(raw), estimateTokenCount(clean));
+}
+
 function setActiveStorybookAutoContinue(next, conv = null) {
   const key = getStoryRuleBookKey(conv);
   if (!key) return false;
@@ -6457,7 +6686,9 @@ async function euEnterAppLoadSessionState() {
   try {
     loadUserPersonas();
     loadConversationRuntime();
+    loadVirtualLoverList();
     updateWorldSubmenu();
+    updateVirtualLoverSubmenu();
   } catch {
     /* ignore */
   }
@@ -7322,7 +7553,7 @@ const EUAdapter = {
     if (!conv) throw new Error('未找到当前会话');
     return conv;
   },
-  async sendUserInput(inputText) {
+  async sendUserInput(inputText, opts = {}) {
     const conv = this.getActiveConversationOrThrow();
     ensureConversationParityFields(conv, Date.now());
     const cleaned = decontaminateConversationMessages(conv);
@@ -7374,8 +7605,14 @@ const EUAdapter = {
     const promptText = text;
 
     state.worldChatAutoFollow = true;
-    addWorldMessage(getEuPublicDisplayName() || '你', text, 'user');
-    conv.messages.push({ role: 'user', content: text });
+    if (!opts.hideUserBubble) {
+      addWorldMessage(getEuPublicDisplayName() || '你', text, 'user');
+    }
+    conv.messages.push({
+      role: 'user',
+      content: text,
+      ...(opts.euStartKickoff ? { euStartKickoff: true } : {}),
+    });
     conv.updatedAt = Date.now();
     await this.saveConversationRuntime();
 
@@ -7396,7 +7633,8 @@ const EUAdapter = {
         if (!bubbleEl) return;
         const visible = euFormatAssistantForDisplay(streamText);
         if (visible.trim()) {
-          bubbleEl.innerHTML = `${escapeHtml(visible).replace(/\r?\n/g, '<br>')}<span class="streaming-cursor">|</span>`;
+          bubbleEl.classList.add('eu-readable-prose');
+          bubbleEl.innerHTML = `${euFormatTextToDisplayHtml(visible) || escapeHtml(visible).replace(/\r?\n/g, '<br>')}<span class="streaming-cursor">|</span>`;
         } else {
           bubbleEl.innerHTML = `<span class="typing-indicator"><span></span><span></span><span></span></span>`;
         }
@@ -7475,14 +7713,15 @@ const EUAdapter = {
         throw new Error('RP输出为空（已过滤思考过程）');
       }
       const needsContinuation =
-        canEuAutoContinueSecondRequest() && shouldAutoContinueReply(finalReply, 0);
+        canEuAutoContinueSecondRequest() && shouldAutoContinueReply(finalReply, 0, rawStorage);
       if (needsContinuation) {
-        const continuation = await requestAiReply('请直接延续上一条回复，不要重复前文，从中断处继续完整说完。', {
+        const continuation = await requestAiReply(euPickContinuationUserPrompt(), {
           charName: speakerName,
           history: [...conv.messages, { role: 'assistant', content: rawStorage }],
           allowAutoContinue: true,
           autoContinueDepth: 1,
           autoContinueAccumulated: rawStorage,
+          maxReplyTokensOverride: euRemainingAutoContinueTokens(rawStorage) || undefined,
           timeoutMs: 45000,
         });
         const contRaw = String(continuation?.rawReply || continuation?.reply || '').trim();
@@ -7506,7 +7745,8 @@ const EUAdapter = {
         ? visibleAfterPost
         : euFormatAssistantForDisplay(rawStorage);
       if (streamDeltaCount > 0 && bubbleEl) {
-        bubbleEl.innerHTML = escapeHtml(displayFinal).replace(/\r?\n/g, '<br>');
+        bubbleEl.classList.add('eu-readable-prose');
+        bubbleEl.innerHTML = euFormatTextToDisplayHtml(displayFinal) || escapeHtml(displayFinal).replace(/\r?\n/g, '<br>');
       } else {
         await renderAssistantPseudoStream(speakerName, rawStorage, { typingEl, bubbleEl, tickMs: 3 });
       }
@@ -8486,6 +8726,7 @@ function getCharacters() {
   // 列出「我的世界」侧栏：任意已创建的会话都应出现（含尚未产生有效消息的记录），
   // 否则开场白被净化为空后 messages 长度为 0，会导致刚点开的故事书永远不显示。
   const fromSessions = Object.keys(state.characterSessions || {}).filter((name) => {
+    if (String(name || '').startsWith('虚拟恋人·')) return false;
     const key = state.characterSessions[name];
     return Boolean(key && state.conversationStore?.[key]);
   });
@@ -8550,15 +8791,131 @@ function euIsDefaultStorybookGreeting(text) {
   return false;
 }
 
+const EU_STORYBOOK_START_KICKOFF = '开始';
+
+/** 制卡社群常见的分享/版权说明（写在 first_mes 里，不是 RP 开场）。 */
+function euLooksLikeCardSharePreface(text) {
+  const s = String(text || '').trim();
+  if (!s || s.length < 20) return false;
+  let score = 0;
+  if (/角色卡.*分享|本角色卡分享|分享于以下|卡面分享/i.test(s)) score += 2;
+  if (/点击跳转|点击查看|点击加入|欢迎加入/i.test(s)) score += 1;
+  if (/discord|DISCORD/i.test(s)) score += 1;
+  if (/CC\s*BY|creativecommons|知识共享|许可证进行授权|依据.*许可证/i.test(s)) score += 1;
+  if (/(?:模板|人设|卡面).*由.*提供|制卡|原作者|搬运/i.test(s)) score += 1;
+  const urlHits = (s.match(/https?:\/\/|www\./gi) || []).length;
+  if (urlHits >= 2) score += 2;
+  else if (urlHits >= 1 && s.length < 500) score += 1;
+  const hasRpNarrative =
+    /[*＊][^*＊\n]{6,}[*＊]/.test(s) ||
+    /[「『""][^」』""\n]{4,}[」』""]/.test(s) ||
+    /(?:^|\n)\s*[^\n：:]{1,10}[：:]\s*[「『""]/.test(s);
+  if (hasRpNarrative) {
+    if (score >= 4) return true;
+    return false;
+  }
+  return score >= 3;
+}
+
+function euStripCardSharePreface(text) {
+  const s = String(text || '').trim();
+  if (!s) return '';
+  if (!euLooksLikeCardSharePreface(s)) return s;
+  const parts = s.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  for (const p of parts) {
+    if (p.length >= 12 && !euLooksLikeCardSharePreface(p)) return p;
+  }
+  const lines = s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const kept = [];
+  for (const line of lines) {
+    if (/^https?:\/\//i.test(line) || /^www\./i.test(line)) continue;
+    if (/discord|点击跳转|CC\s*BY|许可证|分享于/i.test(line) && line.length < 120) continue;
+    kept.push(line);
+  }
+  const joined = kept.join('\n').trim();
+  if (joined.length >= 12 && !euLooksLikeCardSharePreface(joined)) return joined;
+  return '';
+}
+
+function euSanitizeStorybookOpeningText(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  if (euLooksLikeCardSharePreface(raw)) {
+    const stripped = euStripCardSharePreface(raw);
+    return stripped && !euLooksLikeCardSharePreface(stripped) ? stripped : '';
+  }
+  return raw;
+}
+
+function euIsUnusableStorybookOpening(text) {
+  const s = String(text || '').trim();
+  if (!s) return true;
+  if (euIsDefaultStorybookGreeting(s)) return true;
+  if (euIsStubStorybookOpening(s)) return true;
+  if (euLooksLikeCardSharePreface(s)) return true;
+  return false;
+}
+
+function euSanitizeMessageContentForDisplay(msg) {
+  const role = msg?.role === 'user' || msg?.type === 'user' ? 'user' : 'ai';
+  const raw = String(msg?.content || '').trim();
+  if (!raw) return '';
+  if (role === 'user') {
+    if (raw === EU_STORYBOOK_START_KICKOFF && msg?.euStartKickoff) return '';
+    return raw;
+  }
+  const opening = euSanitizeStorybookOpeningText(raw);
+  if (!opening || euIsUnusableStorybookOpening(opening)) return '';
+  return opening;
+}
+
+let euStorybookStartKickoffInFlight = false;
+
+async function euKickoffStorybookWithStart(charName) {
+  if (euStorybookStartKickoffInFlight) return;
+  const cn = String(charName || state.worldChatName || '').trim();
+  if (!cn) return;
+  const conv = getActiveConversation();
+  if (!conv) return;
+  const hasRealAi = (conv.messages || []).some((m) => {
+    if (m?.role !== 'assistant' && m?.type !== 'ai') return false;
+    const c = euSanitizeStorybookOpeningText(m?.content);
+    return Boolean(c) && !euIsUnusableStorybookOpening(c);
+  });
+  if (hasRealAi) return;
+  euStorybookStartKickoffInFlight = true;
+  try {
+    conv.messages = (conv.messages || []).filter((m) => {
+      if (m?.role === 'user' || m?.type === 'user') {
+        if (String(m?.content || '').trim() === EU_STORYBOOK_START_KICKOFF && m?.euStartKickoff) return false;
+        return Boolean(String(m?.content || '').trim());
+      }
+      return !euIsUnusableStorybookOpening(m?.content);
+    });
+    conv.metadata = conv.metadata || {};
+    conv.metadata.storybookOpening = '';
+    persistConversationRuntime();
+    await EUAdapter.sendUserInput(EU_STORYBOOK_START_KICKOFF, { hideUserBubble: true, euStartKickoff: true });
+    conv.metadata.euStartKickoffDone = true;
+    persistConversationRuntime();
+  } catch (e) {
+    console.warn('[EU] euKickoffStorybookWithStart', e?.message || e);
+    showToast(`自动开始对话失败：${e?.message || String(e)}`, 'warning');
+  } finally {
+    euStorybookStartKickoffInFlight = false;
+  }
+}
+
 /** preview 接口：优先 openingPlain，否则从【开场白】简介截取正文首句。 */
 function euOpeningFromPreview(preview) {
   if (!preview || typeof preview !== 'object') return '';
-  let op = String(preview.openingPlain || '').trim();
+  let op = euSanitizeStorybookOpeningText(String(preview.openingPlain || '').trim());
   if (op && !euIsDefaultStorybookGreeting(op) && !euIsStubStorybookOpening(op)) return op;
   let desc = String(preview.desc || '').trim();
   if (desc.startsWith('【开场白】')) {
     desc = desc.replace(/^【开场白】\s*\n?/, '').trim();
   }
+  desc = euSanitizeStorybookOpeningText(desc);
   if (desc && desc.length > 20 && !euNeedsMallDescRepair(desc) && !euIsDefaultStorybookGreeting(desc)) {
     return desc;
   }
@@ -8748,7 +9105,8 @@ async function euFetchAndMergePublicMallResource(publicId, uidHint = '') {
     const u = String(uidHint || `public-${id}`).trim();
     const rawFull = payload.raw && typeof payload.raw === 'object' ? payload.raw : payload;
     const rawLean = euRawLeanForDescAndStorage(rawFull);
-    const fm = euExtractCardOpeningText(rawLean) || String(payload.first_mes || '').trim();
+    const fmRaw = euExtractCardOpeningText(rawLean) || String(payload.first_mes || '').trim();
+    const fm = euSanitizeStorybookOpeningText(fmRaw) || '';
     const descBuilt = rawLean ? euBuildCardListDescription(rawLean) : '';
     const descFromApi = String(payload.desc || '').trim();
     let desc = descBuilt && descBuilt !== '暂无简介' ? descBuilt : descFromApi;
@@ -8911,9 +9269,20 @@ async function openWorldChat(charName) {
     if (cleaned.changed) persistConversationRuntime();
   }
   let linkedBook = syncStorybookContextForConversation(charName, conv);
-  if (linkedBook) {
+  if (conv) hydrateAuthorRuleFromStorybookStore(conv);
+  const virtualLoverMode = isActiveVirtualLoverChat(conv);
+  if (linkedBook && !virtualLoverMode) {
     const hydrateKey = String(linkedBook.uid || conv?.metadata?.storybookUid || '').trim();
     linkedBook = await euHydrateStorybookForChat(hydrateKey || linkedBook) || linkedBook;
+  } else if (linkedBook && virtualLoverMode) {
+    const hydrateKey = String(conv?.metadata?.characterCardUid || linkedBook.uid || '').trim();
+    if (hydrateKey) {
+      try {
+        linkedBook = (await euHydrateStorybookForChat(hydrateKey)) || linkedBook;
+      } catch {
+        /* ignore */
+      }
+    }
   }
   const titleEl = document.getElementById('world-chat-title');
   if (titleEl) titleEl.textContent = charName;
@@ -8931,8 +9300,27 @@ async function openWorldChat(charName) {
     container.innerHTML = '';
     const history = loadChatHistory(charName);
     const defaultGreeting = '你好呀～很高兴和你聊天！';
-    const uidForOpen = String(conv?.metadata?.storybookUid || linkedBook?.uid || '').trim();
-    let resolvedGreeting = String(conv?.metadata?.storybookOpening || '').trim();
+    const uidForOpen = virtualLoverMode
+      ? String(conv?.metadata?.characterCardUid || linkedBook?.uid || '').trim()
+      : String(conv?.metadata?.storybookUid || linkedBook?.uid || '').trim();
+    let resolvedGreeting = '';
+    if (virtualLoverMode && linkedBook) {
+      resolvedGreeting = String(getStorybookGreeting(linkedBook) || euExtractCardOpeningText(linkedBook?.raw || linkedBook) || '').trim();
+      if (resolvedGreeting && !euIsDefaultStorybookGreeting(resolvedGreeting)) {
+        resolvedGreeting = euSubstituteOpeningMacros(
+          resolvedGreeting,
+          String(linkedBook.title || '').trim() || '恋人',
+        );
+      }
+    } else if (uidForOpen || linkedBook) {
+      const freshOpen = await euResolveStorybookOpeningForChat(uidForOpen, linkedBook);
+      if (freshOpen && !euIsDefaultStorybookGreeting(freshOpen) && !euIsStubStorybookOpening(freshOpen)) {
+        resolvedGreeting = freshOpen;
+      }
+    }
+    if (!resolvedGreeting) {
+      resolvedGreeting = String(conv?.metadata?.storybookOpening || '').trim();
+    }
     if (!resolvedGreeting || euIsDefaultStorybookGreeting(resolvedGreeting)) {
       if (uidForOpen.startsWith('public-')) {
         const preview = await euFetchPublicResourcePreview(uidForOpen.slice('public-'.length));
@@ -8946,71 +9334,118 @@ async function openWorldChat(charName) {
     if (!resolvedGreeting || euIsDefaultStorybookGreeting(resolvedGreeting)) {
       resolvedGreeting = String(getStorybookGreeting(linkedBook) || '').trim();
     }
-    const charForMacro = String(linkedBook?.title || charName.replace(/^故事书[·\-]/, '') || '').trim() || '角色';
-    if (resolvedGreeting && !euIsDefaultStorybookGreeting(resolvedGreeting)) {
+    const charForMacro = String(
+      linkedBook?.title || charName.replace(/^故事书[·\-]/, '').replace(/^虚拟恋人[·\-]/, '') || '',
+    ).trim() || '角色';
+    resolvedGreeting = euSanitizeStorybookOpeningText(resolvedGreeting);
+    const isStorybookChat =
+      !virtualLoverMode &&
+      (Boolean(conv?.metadata?.storybookUid) || /^故事书[·\-]/.test(String(charName || '')));
+    if (resolvedGreeting && !euIsUnusableStorybookOpening(resolvedGreeting)) {
       resolvedGreeting = euSubstituteOpeningMacros(resolvedGreeting, charForMacro);
     } else {
-      resolvedGreeting = defaultGreeting;
+      resolvedGreeting = '';
     }
-    const historyOnlyDefault =
-      history.length > 0 &&
-      history.every((m) => {
-        if (m?.role === 'user' || m?.type === 'user') return !String(m.content || '').trim();
-        return euIsDefaultStorybookGreeting(m?.content);
-      });
-    if (history.length > 0) {
-      let rows = history.slice();
-      const shouldResetOpening =
-        resolvedGreeting !== defaultGreeting &&
-        (historyOnlyDefault || rows.some((m) => euIsDefaultStorybookGreeting(m?.content)));
-      if (shouldResetOpening) {
-        rows = [{ role: 'assistant', type: 'ai', content: resolvedGreeting, sender: charName }];
+    const hasUserTurns = history.some((m) => {
+      if (m?.role !== 'user' && m?.type !== 'user') return false;
+      const c = String(m?.content || '').trim();
+      return Boolean(c) && c !== EU_STORYBOOK_START_KICKOFF;
+    });
+    const hasValidAiTurn = history.some((m) => {
+      if (m?.role !== 'assistant' && m?.type !== 'ai') return false;
+      return Boolean(euSanitizeMessageContentForDisplay(m));
+    });
+    const needStartKickoff = isStorybookChat && !hasUserTurns && !hasValidAiTurn && !resolvedGreeting;
+    if (needStartKickoff) {
+      if (conv) {
+        conv.messages = [];
+        conv.metadata = conv.metadata || {};
+        conv.metadata.storybookOpening = '';
+        persistConversationRuntime();
+      }
+      state.worldChatAutoFollow = true;
+      scrollWorldChatToBottom(true);
+      void euKickoffStorybookWithStart(charName);
+    } else {
+      const historyOnlyDefault =
+        history.length > 0 &&
+        history.every((m) => {
+          if (m?.role === 'user' || m?.type === 'user') return !String(m.content || '').trim();
+          return euIsUnusableStorybookOpening(m?.content);
+        });
+      if (history.length > 0) {
+        let rows = history.slice();
+        const shouldResetOpening =
+          resolvedGreeting &&
+          (historyOnlyDefault || rows.some((m) => euIsUnusableStorybookOpening(m?.content)));
+        if (shouldResetOpening) {
+          rows = [{ role: 'assistant', type: 'ai', content: resolvedGreeting, sender: charName }];
+          if (conv) {
+            conv.messages = [{ role: 'assistant', content: resolvedGreeting, sender: charName }];
+            conv.metadata = conv.metadata || {};
+            conv.metadata.storybookOpening = resolvedGreeting;
+            conv.updatedAt = Date.now();
+            persistConversationRuntime();
+          }
+        } else if (resolvedGreeting) {
+          for (let i = 0; i < rows.length; i += 1) {
+            const m = rows[i];
+            if (!m || (m.role !== 'assistant' && m.type !== 'ai')) continue;
+            if (!euIsUnusableStorybookOpening(m.content)) break;
+            rows[i] = { ...m, content: resolvedGreeting };
+            if (conv && Array.isArray(conv.messages)) {
+              const cm = conv.messages[i];
+              if (cm && (cm.role === 'assistant' || cm.type === 'ai') && euIsUnusableStorybookOpening(cm.content)) {
+                conv.messages[i] = { ...cm, content: resolvedGreeting };
+              }
+              conv.updatedAt = Date.now();
+              persistConversationRuntime();
+            }
+            break;
+          }
+        }
+        rows.forEach((msg) => {
+          const t = msg?.role === 'user' || msg?.type === 'user' ? 'user' : 'ai';
+          const sender = msg?.sender || charName;
+          const content = euSanitizeMessageContentForDisplay(msg);
+          if (!content) return;
+          addWorldMessage(sender, content, t);
+        });
+      } else if (resolvedGreeting) {
+        addWorldMessage(charName, resolvedGreeting, 'ai');
         if (conv) {
-          conv.messages = [{ role: 'assistant', content: resolvedGreeting, sender: charName }];
+          conv.messages.push({ role: 'assistant', content: resolvedGreeting, sender: charName });
           conv.metadata = conv.metadata || {};
           conv.metadata.storybookOpening = resolvedGreeting;
           conv.updatedAt = Date.now();
           persistConversationRuntime();
         }
-      } else if (resolvedGreeting !== defaultGreeting) {
-        for (let i = 0; i < rows.length; i += 1) {
-          const m = rows[i];
-          if (!m || (m.role !== 'assistant' && m.type !== 'ai')) continue;
-          if (!euIsDefaultStorybookGreeting(m.content)) break;
-          rows[i] = { ...m, content: resolvedGreeting };
-          if (conv && Array.isArray(conv.messages)) {
-            const cm = conv.messages[i];
-            if (cm && (cm.role === 'assistant' || cm.type === 'ai') && euIsDefaultStorybookGreeting(cm.content)) {
-              conv.messages[i] = { ...cm, content: resolvedGreeting };
-            }
-            conv.updatedAt = Date.now();
-            persistConversationRuntime();
-          }
-          break;
+      } else if (!isStorybookChat) {
+        addWorldMessage(charName, defaultGreeting, 'ai');
+        if (conv) {
+          conv.messages.push({ role: 'assistant', content: defaultGreeting, sender: charName });
+          conv.updatedAt = Date.now();
+          persistConversationRuntime();
         }
+      } else {
+        if (conv) {
+          conv.messages = [];
+          persistConversationRuntime();
+        }
+        void euKickoffStorybookWithStart(charName);
       }
-      rows.forEach((msg) => {
-        const t = msg?.role === 'user' || msg?.type === 'user' ? 'user' : 'ai';
-        const sender = msg?.sender || charName;
-        const content = msg?.content || '';
-        addWorldMessage(sender, content, t);
-      });
-    } else {
-      addWorldMessage(charName, resolvedGreeting, 'ai');
-      if (conv) {
-        conv.messages.push({ role: 'assistant', content: resolvedGreeting, sender: charName });
-        conv.updatedAt = Date.now();
-        persistConversationRuntime();
-      }
+      state.worldChatAutoFollow = true;
+      scrollWorldChatToBottom(true);
     }
-    state.worldChatAutoFollow = true;
-    scrollWorldChatToBottom(true);
   }
   const cn = String(charName || '').trim();
-  const navKey = /^故事书[·\-]/.test(cn) ? 'storybook' : 'characters';
+  let navKey = 'characters';
+  if (/^故事书[·\-]/.test(cn)) navKey = 'storybook';
+  else if (/^虚拟恋人[·\-]/.test(cn)) navKey = 'virtual-lover';
   euApplySidebarNavActive(navKey);
   euApplyTopbarNavForPageKey(navKey);
   updateWorldSubmenu();
+  updateVirtualLoverSubmenu();
 }
 
 function createWorldChatPage() {
@@ -9212,10 +9647,15 @@ function addWorldMessage(sender, content, type = 'ai') {
       return `<span class="reply-token-badge" title="估算 completion token（与酒馆 max_tokens 无硬性对齐）">≈${token}T</span>`;
     })()
     : '';
+  const bubbleInner =
+    type === 'ai'
+      ? euFormatTextToDisplayHtml(safeContent) || escapeHtml(safeContent || '').replace(/\r?\n/g, '<br>')
+      : escapeHtml(safeContent || '').replace(/\r?\n/g, '<br>');
+  const bubbleClass = type === 'ai' ? 'chat-bubble eu-readable-prose' : 'chat-bubble';
   container.innerHTML += `
     <div class="chat-item ${roleClass}">
       <span class="chat-role">${escapeHtml(roleName || 'AI')}${tokenBadge}</span>
-      <div class="chat-bubble">${escapeHtml(safeContent || '').replace(/\r?\n/g, '<br>')}</div>
+      <div class="${bubbleClass}">${bubbleInner}</div>
     </div>
   `;
   scrollWorldChatToBottom(false);
@@ -9396,14 +9836,98 @@ function sanitizeRpReplyForDisplay(rawText) {
   return fallback;
 }
 
-function euFormatAssistantForDisplay(rawText) {
-  const cleaned = sanitizeRpReplyForDisplay(rawText);
-  if (cleaned.trim()) return cleaned;
-  const raw = String(rawText || '');
-  if (euCountCjkChars(raw) >= 4) {
-    return euStripDisplayMetaBlocks(raw.split(/<\s*(?:Analysis|JSONPatch|UpdateVariable|disclaimer)\b/i)[0]).trim();
+/** 无空行长文：在 **场景**：、**14:00 - …**、句末后接 ** 等处断段。 */
+function euNormalizeReadableParagraphs(text) {
+  let s = String(text || '').replace(/\r\n/g, '\n').trim();
+  if (!s) return s;
+  if (!/\n{2,}/.test(s)) {
+    s = s.replace(/([。！？.!?…」』"'])\s*(\*\*)/g, '$1\n\n$2');
+    s = s.replace(/([。！？.!?…」』"'])\s*(?=\【)/g, '$1\n\n');
+    s = s.replace(/(\S{36,})(\*\*\d{1,2}:\d{2})/g, '$1\n\n$2');
+    s = s.replace(/(?<!\n\n)(\*\*(?:[^*\n]{1,56})\*\*(?:[：:]|(?:\s*[-–—]\s*)))/g, (m, _g, off) => (off > 0 ? '\n\n' : '') + m);
+    s = s.replace(/(?<!\n\n)(\【[^】\n]{1,32}】)/g, (m, _g, off) => (off > 0 ? '\n\n' : '') + m);
+    s = s.replace(/([。！？.!?…」』])\s*(\d+[.、．]\s)/g, '$1\n\n$2');
+    s = s.trim();
   }
-  return cleaned;
+  return s.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** 简介/开场白摘录：保留【开场白】前缀，正文自然分段（展示与编辑框用）。 */
+function euFormatDescPlainText(desc) {
+  let s = String(desc || '').trim();
+  if (!s || s === '暂无简介') return s;
+  let prefix = '';
+  if (s.startsWith(EU_LIST_DESC_OPENING_PREFIX)) {
+    prefix = EU_LIST_DESC_OPENING_PREFIX;
+    s = s.slice(EU_LIST_DESC_OPENING_PREFIX.length).trim();
+  } else if (s.startsWith('【开场白】')) {
+    const nl = s.indexOf('\n');
+    prefix = nl >= 0 ? `${s.slice(0, nl).trim()}\n` : '【开场白】\n';
+    s = nl >= 0 ? s.slice(nl + 1).trim() : '';
+  }
+  s = euNormalizeReadableParagraphs(s);
+  return prefix ? `${prefix}${s}` : s;
+}
+
+function euFormatDescToDisplayHtml(desc) {
+  const plain = euFormatDescPlainText(desc);
+  if (!plain || plain === '暂无简介') return '';
+  let prefix = '';
+  let body = plain;
+  const nl = plain.indexOf('\n');
+  if (plain.startsWith('【开场白】') && nl >= 0) {
+    prefix = plain.slice(0, nl).trim();
+    body = plain.slice(nl + 1).trim();
+  }
+  const bodyHtml = euFormatTextToDisplayHtml(body);
+  if (!bodyHtml) return escapeHtml(plain).replace(/\r?\n/g, '<br>');
+  if (prefix) {
+    return `<p class="eu-readable-p eu-desc-prefix"><strong>${escapeHtml(prefix)}</strong></p>${bodyHtml}`;
+  }
+  return bodyHtml;
+}
+
+function euMallCardDescBlockHtml(item, shortFallback = '') {
+  const full = euFormatDescPlainText(String(item?.desc || '').trim());
+  if (full && full !== '暂无简介') {
+    return `<div class="mall-card-desc eu-desc-prose">${euFormatDescToDisplayHtml(full)}</div>`;
+  }
+  const short = String(shortFallback || '').trim();
+  return short
+    ? `<p class="mall-card-desc">${escapeHtml(short)}</p>`
+    : '<p class="mall-card-desc muted">暂无简介</p>';
+}
+
+function euFormatReadableInlineHtml(text) {
+  return escapeHtml(String(text || '')).replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+}
+
+function euFormatTextToDisplayHtml(text) {
+  const normalized = euNormalizeReadableParagraphs(String(text || ''));
+  if (!normalized) return '';
+  return normalized
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p class="eu-readable-p">${euFormatReadableInlineHtml(p).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+}
+
+function euRenderAssistantBubbleHtml(rawOrDisplayText) {
+  const display = euFormatAssistantForDisplay(rawOrDisplayText);
+  const html = euFormatTextToDisplayHtml(display);
+  return html || escapeHtml(display).replace(/\r?\n/g, '<br>');
+}
+
+function euFormatAssistantForDisplay(rawText) {
+  let cleaned = sanitizeRpReplyForDisplay(rawText);
+  if (!cleaned.trim()) {
+    const raw = String(rawText || '');
+    if (euCountCjkChars(raw) >= 4) {
+      cleaned = euStripDisplayMetaBlocks(raw.split(/<\s*(?:Analysis|JSONPatch|UpdateVariable|disclaimer)\b/i)[0]).trim();
+    }
+  }
+  return euNormalizeReadableParagraphs(cleaned);
 }
 
 function euBuildAiReplyResult(charName, rawText) {
@@ -9600,13 +10124,15 @@ async function renderAssistantPseudoStream(sender, content, options = {}) {
     idx = Math.min(full.length, idx + step);
     const part = full.slice(0, idx);
     if (bubbleEl) {
-      bubbleEl.innerHTML = `${escapeHtml(part).replace(/\r?\n/g, '<br>')}<span class="streaming-cursor">|</span>`;
+      bubbleEl.classList.add('eu-readable-prose');
+      bubbleEl.innerHTML = `${euFormatTextToDisplayHtml(part) || escapeHtml(part).replace(/\r?\n/g, '<br>')}<span class="streaming-cursor">|</span>`;
     }
     scrollWorldChatToBottom(false);
     if (tickMs) await new Promise(resolve => setTimeout(resolve, tickMs));
   }
   if (bubbleEl) {
-    bubbleEl.innerHTML = escapeHtml(full).replace(/\r?\n/g, '<br>');
+    bubbleEl.classList.add('eu-readable-prose');
+    bubbleEl.innerHTML = euFormatTextToDisplayHtml(full) || escapeHtml(full).replace(/\r?\n/g, '<br>');
   }
 }
 
@@ -9637,6 +10163,189 @@ function updateWorldSubmenu() {
     .join('');
 }
 
+function getVirtualLoverStoreKey() {
+  const userKey = state.currentUser || 'guest';
+  return `eu_demo_virtual_lovers_v1_${userKey}`;
+}
+
+function loadVirtualLoverList() {
+  try {
+    const raw = localStorage.getItem(getVirtualLoverStoreKey());
+    const parsed = euSafeJsonParse(raw, []);
+    state.virtualLoverList = Array.isArray(parsed)
+      ? parsed
+          .map((e) => ({
+            cardUid: String(e?.cardUid || e?.uid || '').trim(),
+            title: String(e?.title || '').trim(),
+            img: String(e?.img || '').trim(),
+            addedAt: Number(e?.addedAt) || 0,
+          }))
+          .filter((e) => e.cardUid)
+      : [];
+  } catch {
+    state.virtualLoverList = [];
+  }
+  return state.virtualLoverList;
+}
+
+function persistVirtualLoverList(list) {
+  const rows = Array.isArray(list) ? list : state.virtualLoverList || [];
+  state.virtualLoverList = rows;
+  try {
+    localStorage.setItem(getVirtualLoverStoreKey(), JSON.stringify(rows));
+  } catch {
+    /* ignore */
+  }
+  updateVirtualLoverSubmenu();
+}
+
+function isVirtualLoverCard(cardUid) {
+  const u = String(cardUid || '').trim();
+  if (!u) return false;
+  return (state.virtualLoverList || []).some((e) => String(e?.cardUid || '').trim() === u);
+}
+
+function toggleVirtualLoverSubmenu() {
+  const navItem = document.getElementById('virtual-lover-nav-item');
+  const submenu = document.getElementById('virtual-lover-submenu');
+  if (!navItem || !submenu) return;
+  navItem.classList.toggle('expanded');
+  submenu.style.display = navItem.classList.contains('expanded') ? 'block' : 'none';
+}
+
+function updateVirtualLoverSubmenu() {
+  const submenu = document.getElementById('virtual-lover-submenu');
+  if (!submenu) return;
+  const list = loadVirtualLoverList();
+  if (!list.length) {
+    submenu.innerHTML = '<div class="submenu-item" style="color: var(--muted); cursor: default;">暂无恋人</div>';
+    return;
+  }
+  submenu.innerHTML = list
+    .slice()
+    .sort((a, b) => (Number(b.addedAt) || 0) - (Number(a.addedAt) || 0))
+    .map((entry) => {
+      const uid = String(entry.cardUid || '').trim();
+      const title = String(entry.title || '恋人').trim() || '恋人';
+      const imgNorm = entry.img ? normalizeStoredImagePath(String(entry.img)) : '';
+      const imgSrc = imgNorm ? euMallCoverImgSrcForTag(imgNorm, entry) : '';
+      const avatar = imgSrc
+        ? `<img src="${escapeHtml(imgSrc)}" alt="" onerror="this.remove();this.parentElement.textContent='♥';">`
+        : '♥';
+      return `<div class="submenu-item world-submenu-item" onclick='void startVirtualLoverChat(${JSON.stringify(uid)})'><div class="world-submenu-avatar">${avatar}</div><span class="world-submenu-name">${escapeHtml(title)}</span><button type="button" class="world-submenu-close" title="从列表移除" onclick='event.stopPropagation();removeVirtualLoverEntry(${JSON.stringify(uid)});'>×</button></div>`;
+    })
+    .join('');
+}
+
+function removeVirtualLoverEntry(cardUid) {
+  const u = String(cardUid || '').trim();
+  if (!u) return;
+  const next = (state.virtualLoverList || []).filter((e) => String(e?.cardUid || '').trim() !== u);
+  persistVirtualLoverList(next);
+  showToast('已从虚拟恋人列表移除', 'success');
+}
+
+function euResolveCharacterCardItem(uid) {
+  const u = String(uid || '').trim();
+  if (!u) return null;
+  const fromLib = getCharacterCardItems().find((it) => String(it?.uid || '').trim() === u);
+  if (fromLib) return fromLib;
+  const item = euResolveItemByUid(u, { light: true });
+  if (item && normalizeDevType(item.type ?? item.resourceType) === 'character') return item;
+  return null;
+}
+
+function addVirtualLoverEntry(cardUid, book = {}) {
+  const u = String(cardUid || '').trim();
+  if (!u) return false;
+  if (isVirtualLoverCard(u)) return false;
+  const list = loadVirtualLoverList();
+  list.push({
+    cardUid: u,
+    title: String(book?.title || '').trim() || '恋人',
+    img: String(book?.img || book?.cover || '').trim(),
+    addedAt: Date.now(),
+  });
+  persistVirtualLoverList(list);
+  return true;
+}
+
+async function confirmAddVirtualLover(cardUid) {
+  const u = String(cardUid || '').trim();
+  if (!u) return;
+  const book = euResolveCharacterCardItem(u);
+  if (!book) {
+    showToast('未找到该角色卡', 'error');
+    return;
+  }
+  if (!getAcquiredSet().has(u)) {
+    showToast('请先在商城获取该角色卡', 'warning');
+    return;
+  }
+  if (isVirtualLoverCard(u)) {
+    showToast('已在虚拟恋人列表中', 'warning');
+    return;
+  }
+  const title = String(book.title || '该角色').trim();
+  if (
+    !confirm(
+      `是否将《${title}》添加到虚拟恋人？\n添加后可在侧栏「虚拟恋人」中单独对话（以聊天为主、少量动作描写）。`,
+    )
+  ) {
+    return;
+  }
+  addVirtualLoverEntry(u, book);
+  hideModal('mall-detail-modal');
+  showToast('已添加到虚拟恋人', 'success');
+  const navItem = document.getElementById('virtual-lover-nav-item');
+  if (navItem && !navItem.classList.contains('expanded')) toggleVirtualLoverSubmenu();
+}
+
+function openCharacterLibraryDetail(uid) {
+  state.mallDetailContext = 'characterlib';
+  openMallDetail(uid);
+}
+
+function euCharacterLibCardClick(uid) {
+  const u = String(uid || '').trim();
+  if (!u) return;
+  const modal = document.getElementById('mall-detail-modal');
+  const modalOpen = modal?.classList?.contains('active');
+  const acquired = getAcquiredSet().has(u);
+  if (modalOpen && String(state.pendingMallItemUid || '').trim() === u && acquired) {
+    void confirmAddVirtualLover(u);
+    return;
+  }
+  const now = Date.now();
+  if (state.euLastCharLibUid === u && now - (state.euLastCharLibAt || 0) < 8000 && acquired) {
+    void confirmAddVirtualLover(u);
+    return;
+  }
+  state.euLastCharLibUid = u;
+  state.euLastCharLibAt = now;
+  openCharacterLibraryDetail(u);
+}
+
+function isActiveVirtualLoverChat(conv = null) {
+  const c = conv || getActiveConversation();
+  if (c?.metadata?.chatMode === 'virtual-lover') return true;
+  return String(state.worldChatName || c?.characterName || '').startsWith('虚拟恋人·');
+}
+
+function getActiveVirtualLoverCard() {
+  const conv = getActiveConversation();
+  const uid = String(conv?.metadata?.characterCardUid || state.activeVirtualLoverCardUid || '').trim();
+  if (uid) {
+    const byUid = euResolveCharacterCardItem(uid);
+    if (byUid) return byUid;
+  }
+  const title = String(state.worldChatName || conv?.characterName || '')
+    .replace(/^虚拟恋人[·\-]/, '')
+    .trim();
+  if (!title) return null;
+  return getCharacterCardItems().find((b) => String(b?.title || '').trim() === title) || null;
+}
+
 function startChat(charName, convKey) {
   const conv = convKey ? getConversationByKey(convKey) : null;
   syncStorybookContextForConversation(charName, conv);
@@ -9646,12 +10355,32 @@ function startChat(charName, convKey) {
 function getConversationDisplayName(charName = '') {
   const raw = String(charName || '').trim();
   if (!raw) return '';
-  return raw.replace(/^故事书[·\-]/, '').trim() || raw;
+  return raw.replace(/^故事书[·\-]/, '').replace(/^虚拟恋人[·\-]/, '').trim() || raw;
 }
 
 function getConversationAvatarHtml(charName = '') {
   const convKey = state.characterSessions?.[charName];
   const conv = convKey ? getConversationByKey(convKey) : null;
+  if (conv?.metadata?.chatMode === 'virtual-lover' || String(charName || '').startsWith('虚拟恋人·')) {
+    const cardUid = String(conv?.metadata?.characterCardUid || '').trim();
+    let card = cardUid ? euResolveCharacterCardItem(cardUid) : null;
+    if (!card) {
+      const title = String(charName || '').replace(/^虚拟恋人[·\-]/, '').trim();
+      card =
+        getCharacterCardItems().find((b) => String(b?.title || '').trim() === title) ||
+        (state.virtualLoverList || []).find((e) => String(e?.title || '').trim() === title);
+      if (card && card.cardUid) card = euResolveCharacterCardItem(card.cardUid) || card;
+    }
+    const img =
+      (card?.img && String(card.img).trim()) ||
+      (card?.cover && String(card.cover).trim()) ||
+      '';
+    if (img) {
+      const src = euMallCoverImgSrcForTag(normalizeStoredImagePath(img), card);
+      return `<img src="${escapeHtml(src)}" alt="" onerror="this.remove();this.parentElement.textContent='♥';">`;
+    }
+    return '♥';
+  }
   const book = findStorybookByConversation(charName, conv);
   const img =
     (book?.img && String(book.img).trim()) ||
@@ -9735,6 +10464,11 @@ function removeConversationRuntime(charName, convKey = null) {
     showPage('characters');
   }
   persistConversationRuntime();
+  try {
+    updateVirtualLoverSubmenu();
+  } catch {
+    /* ignore */
+  }
   return {
     removedCount: keysToDelete.size,
     removedConversations,
@@ -9915,9 +10649,9 @@ function euNeedsMallDescRepair(desc) {
 /** 列表/商城展示用简介：本地坏数据时用公共库或 raw 重算。 */
 function euResolveMallDisplayDesc(item, pubRow) {
   const local = String(item?.desc || '').trim();
-  if (!euNeedsMallDescRepair(local)) return local;
+  if (!euNeedsMallDescRepair(local)) return euFormatDescPlainText(local);
   const pub = String(pubRow?.desc || '').trim();
-  if (pub && !euNeedsMallDescRepair(pub)) return pub;
+  if (pub && !euNeedsMallDescRepair(pub)) return euFormatDescPlainText(pub);
   const raw = item?.raw && typeof item.raw === 'object' ? item.raw : null;
   if (raw) {
     const built = euBuildCardListDescription(raw);
@@ -9940,11 +10674,19 @@ function euLooksLikeTechnicalCardDesc(text) {
   return false;
 }
 
-function euPlainTextForCardDesc(text) {
-  return euStripEmbeddedInstructionComments(String(text || ''))
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+function euPlainTextForCardDesc(text, opts = {}) {
+  const preserveParagraphs = opts?.preserveParagraphs === true;
+  let s = euStripEmbeddedInstructionComments(String(text || ''));
+  s = s.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|motion|div|h\d|li|section|blockquote)>/gi, '\n');
+  s = s.replace(/<[^>]+>/g, preserveParagraphs ? '\n' : ' ');
+  if (preserveParagraphs) {
+    return s
+      .replace(/[^\S\n]+/g, ' ')
+      .replace(/ *\n */g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+  return s.replace(/\s+/g, ' ').trim();
 }
 
 const EU_LIST_DESC_EXCERPT_MAX = 280;
@@ -9987,17 +10729,20 @@ function euLooksLikeBrokenListExcerpt(excerpt, full) {
 
 /** 开场白 → 存储用简介：与 getStorybookGreeting 同一套游戏卡/选项剥离逻辑。 */
 function euOpeningToStoredListDesc(openingRaw) {
+  const cleanedRaw = euSanitizeStorybookOpeningText(String(openingRaw || '').trim());
+  if (!cleanedRaw) return '';
   const stubBook = {
-    first_mes: String(openingRaw || '').trim(),
-    raw: { first_mes: openingRaw, data: {} },
+    first_mes: cleanedRaw,
+    raw: { first_mes: cleanedRaw, data: {} },
   };
   let resolved = '';
   if (typeof getStorybookGreeting === 'function') {
     resolved = String(getStorybookGreeting(stubBook) || '').trim();
   }
-  if (!resolved) resolved = euResolveOpeningCandidateText(openingRaw);
+  if (!resolved) resolved = euResolveOpeningCandidateText(cleanedRaw);
+  resolved = euSanitizeStorybookOpeningText(resolved);
   if (!resolved || euLooksLikeTechnicalCardDesc(resolved) || euIsStubStorybookOpening(resolved)) return '';
-  let s = euPlainTextForCardDesc(resolved);
+  let s = euPlainTextForCardDesc(resolved, { preserveParagraphs: true });
   if (!s || s.length < 12) return '';
   const fullForStorage = s.length > EU_LIST_DESC_FULL_MAX
     ? euTruncateAtSentenceBoundary(s, EU_LIST_DESC_FULL_MAX)
@@ -10010,7 +10755,7 @@ function euOpeningToStoredListDesc(openingRaw) {
   ) {
     return excerpt;
   }
-  return `${EU_LIST_DESC_OPENING_PREFIX}${fullForStorage}`;
+  return euFormatDescPlainText(`${EU_LIST_DESC_OPENING_PREFIX}${fullForStorage}`);
 }
 
 /** 列表/商城简介：优先开场白（含 HTML 型 first_mes），其次正常人设。 */
@@ -10027,7 +10772,7 @@ function euBuildCardListDescription(clean = {}) {
   };
   let opening = '';
   if (typeof getStorybookGreeting === 'function') {
-    opening = euPlainTextForCardDesc(getStorybookGreeting(book));
+    opening = String(getStorybookGreeting(book) || '').trim();
   }
   if (opening && !euLooksLikeTechnicalCardDesc(opening) && !euIsStubStorybookOpening(opening)) {
     const built = euOpeningToStoredListDesc(opening);
@@ -10035,7 +10780,7 @@ function euBuildCardListDescription(clean = {}) {
   }
   const persona = euExtractCardPersonaText(clean);
   if (persona && !euLooksLikeTechnicalCardDesc(persona)) {
-    const p = euPlainTextForCardDesc(persona);
+    const p = euPlainTextForCardDesc(persona, { preserveParagraphs: true });
     return p.length > 400 ? euTruncateAtSentenceBoundary(p, 400) : p;
   }
   return '暂无简介';
@@ -10043,7 +10788,9 @@ function euBuildCardListDescription(clean = {}) {
 
 function euResolveDevItemDesc(item = {}) {
   const prev = String(item?.desc || '').trim();
-  if (prev.startsWith('【开场白】') && prev.length > 24) return prev;
+  if (prev.startsWith('【开场白】') && prev.length > 24 && !euNeedsMallDescRepair(prev)) {
+    return euFormatDescPlainText(prev);
+  }
   const needsRepair = euNeedsMallDescRepair(prev);
   if (!needsRepair) return prev;
   const raw = item?.raw && typeof item.raw === 'object' ? item.raw : null;
@@ -10057,13 +10804,13 @@ function euResolveDevItemDesc(item = {}) {
     raw: raw || undefined,
   };
   if (book.first_mes && typeof getStorybookGreeting === 'function') {
-    const g = euPlainTextForCardDesc(getStorybookGreeting(book));
+    const g = String(getStorybookGreeting(book) || '').trim();
     if (g && !euLooksLikeTechnicalCardDesc(g) && !euIsStubStorybookOpening(g)) {
       const built = euOpeningToStoredListDesc(g);
       if (built) return built;
     }
   }
-  return prev && !euLooksLikeTechnicalCardDesc(prev) ? prev : '暂无简介';
+  return prev && !euLooksLikeTechnicalCardDesc(prev) ? euFormatDescPlainText(prev) : '暂无简介';
 }
 
 /** 从角色卡 / 故事书 JSON 抽取可检索正文（开场白优先，供 AI 读正文）。 */
@@ -10163,6 +10910,18 @@ function euItemIsAdultForFilter(item) {
   if (item?.adultContent === true) return true;
   const tags = Array.isArray(item?.tags) ? item.tags : [];
   return tags.some((t) => euIsAdultSynonymTag(t) || /成人向|工口|露骨色情/.test(String(t || '')));
+}
+
+/** 标签含「女性向」视为女性向；否则归男性向（商城取向筛选）。 */
+function euItemHasFemaleOrientationTag(item) {
+  const tags = Array.isArray(item?.tags) ? item.tags : [];
+  return tags.some((t) => /女性向/.test(String(t || '').trim()));
+}
+
+function euItemPassesMallOrientationFilter(item) {
+  if (currentMallOrientation === 'female') return euItemHasFemaleOrientationTag(item);
+  if (currentMallOrientation === 'male') return !euItemHasFemaleOrientationTag(item);
+  return true;
 }
 
 /** 商城行：本机 devItem 与公共索引合并时的成人标记（避免只合并 tags 不合并 adultContent）。 */
@@ -12900,9 +13659,15 @@ function setActiveAuthorRuleConfig(nextConfig) {
   const conv = typeof getActiveConversation === 'function' ? getActiveConversation() : null;
   if (conv) {
     conv.metadata = conv.metadata || {};
+    const snapAc = Object.prototype.hasOwnProperty.call(n, 'storybookAutoContinue')
+      ? normalizeStorybookAutoContinue(n.storybookAutoContinue)
+      : getActiveStorybookAutoContinue(conv);
+    const snapRules = Object.prototype.hasOwnProperty.call(n, 'storybookRules')
+      ? (Array.isArray(n.storybookRules) ? n.storybookRules : [])
+      : getActiveStorybookRules(conv);
     conv.metadata.authorRule = {
-      storybookRules: getActiveStorybookRules(conv),
-      storybookAutoContinue: getActiveStorybookAutoContinue(conv),
+      storybookRules: snapRules,
+      storybookAutoContinue: snapAc,
     };
     conv.updatedAt = Date.now();
     if (typeof persistConversationRuntime === 'function') persistConversationRuntime();
@@ -13648,7 +14413,8 @@ function euStripSystemPrefaceForDesc(s) {
       .map((line) => line.trim())
       .filter((line) => line && !/^(?:SYSTEM|ANCHORING|HIGHEST_[A-Z_]+)\s*[:：]/i.test(line))
       .filter((line) => !/^智脑\s*SYSTEM/i.test(line))
-      .join(' ')
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
       .trim();
   } else {
     t = t.replace(/SYSTEM\s*:\s*HIGHEST_[A-Z_]+[^。）"]*/gi, '').trim();
@@ -13737,6 +14503,8 @@ function getStorybookGreeting(book) {
     if (typeof v !== 'string') continue;
     let text = euResolveOpeningCandidateText(v);
     if (!text || euIsStubStorybookOpening(text)) continue;
+    text = euSanitizeStorybookOpeningText(text);
+    if (!text || euIsStubStorybookOpening(text)) continue;
     if (looksLikeNonGreetingPayload(text)) {
       const narrative =
         euNarrativeBeforeNumberedChoiceMenu(text)
@@ -13778,11 +14546,23 @@ function findStorybookByConversation(charName, conv = null) {
 }
 
 function syncStorybookContextForConversation(charName, conv = null) {
+  if (isActiveVirtualLoverChat(conv) || String(charName || '').startsWith('虚拟恋人·')) {
+    const cardUid = String(conv?.metadata?.characterCardUid || '').trim();
+    const card = cardUid ? euResolveCharacterCardItem(cardUid) : getActiveVirtualLoverCard();
+    state.activeStorybookUid = null;
+    state.activeStorybookTitle = '';
+    state.activeVirtualLoverCardUid = card?.uid || cardUid || null;
+    state.activeRegexRules = [];
+    state.regexLoaded = false;
+    state.storybookScopedSettingUids = [];
+    return card;
+  }
   const book = findStorybookByConversation(charName, conv);
   if (!book) {
     // 第三刀：运行态与清理态隔离。仅因“暂时匹配不到书”时不主动清空运行态，避免误伤剧情链路。
     return null;
   }
+  state.activeVirtualLoverCardUid = null;
   state.activeStorybookUid = book.uid;
   state.activeStorybookTitle = String(book.title || '');
   const rules = Array.isArray(book.regexRules) ? book.regexRules : extractRegexRules(book.raw || book);
@@ -13795,7 +14575,27 @@ function syncStorybookContextForConversation(charName, conv = null) {
   return book;
 }
 
+function buildVirtualLoverPromptSections() {
+  const card = getActiveVirtualLoverCard();
+  if (!card) return [];
+  const raw = card.raw && typeof card.raw === 'object' ? card.raw : {};
+  const data = raw.data && typeof raw.data === 'object' ? raw.data : {};
+  const baseDesc = String(data.description || raw.description || card.desc || '').trim();
+  const sections = [
+    { key: 'char_name', text: String(card.title || data.name || '').trim() },
+    { key: 'char_description', text: baseDesc },
+    { key: 'char_personality', text: String(data.personality || raw.personality || '').trim() },
+    { key: 'scenario', text: String(data.scenario || raw.scenario || '').trim() },
+    { key: 'mes_example', text: String(data.mes_example || raw.mes_example || '').trim() },
+    { key: 'system_prompt', text: String(data.system_prompt || raw.system_prompt || '').trim() },
+  ].filter((x) => x.text);
+  return sections;
+}
+
 function buildStorybookRuntimePromptSections() {
+  if (isActiveVirtualLoverChat()) {
+    return buildVirtualLoverPromptSections();
+  }
   const book = state.activeStorybookUid ? findMallItemByUid(state.activeStorybookUid) : null;
   if (!book) return [];
   const raw = book.raw && typeof book.raw === 'object' ? book.raw : {};
@@ -14129,7 +14929,8 @@ function selectHistoryWithinContextBudget(frontMessages, userText, historyRows, 
 function buildBudgetedMessages(runtimeSystemMessages, history, userText, liveProfile, hints = {}) {
   const globalSettingsSystem = buildGlobalSettingsSystemMessage();
   const scopedSettingsSystem = buildStorybookScopedSettingsSystemMessage();
-  const storybookRuleSystem = getStorybookRuleSystemMessage(userText);
+  const autoContinueSystem = buildAutoContinueSystemMessage(userText);
+  const storybookRuleSystem = autoContinueSystem ? null : getStorybookRuleSystemMessage(userText);
   if (EU_ST_NATIVE_CHAT_STACK) {
     let safeHistory = sanitizeHistoryForRequest(scrubRpHistoryForToxicMicroReplies(history));
     if (safeHistory.length && String(safeHistory[safeHistory.length - 1]?.role || '') === 'user') {
@@ -14140,18 +14941,26 @@ function buildBudgetedMessages(runtimeSystemMessages, history, userText, livePro
     }
     const compactDirective = buildCompactStorybookDirective(userText);
     const optionalSystem = [];
+    const virtualLoverMode = isActiveVirtualLoverChat();
     if (hints.degenerateRetry) {
       optionalSystem.push({ role: 'system', content: EU_DEGENERATE_RETRY_SYSTEM, identifier: 'euDegenerateRetry' });
     }
+    if (virtualLoverMode) {
+      optionalSystem.push({ role: 'system', content: EU_VIRTUAL_LOVER_STYLE_SYSTEM, identifier: 'euVirtualLoverStyle' });
+    }
+    if (autoContinueSystem?.content) optionalSystem.push(autoContinueSystem);
+    if (!virtualLoverMode && storybookRuleSystem?.content) optionalSystem.push(storybookRuleSystem);
     if (compactDirective) {
+      const wbLead = autoContinueSystem?.content
+        ? '【上下文摘录（仅供参考；篇幅以「字符控制」为准）】\n'
+        : '【上下文摘录（卡面/世界书数据，非文风指令）】\n';
       optionalSystem.push({
         role: 'system',
-        content: `【上下文摘录（卡面/世界书数据，非文风指令）】\n${compactDirective}`,
+        content: `${wbLead}${compactDirective}`,
       });
     }
-    if (scopedSettingsSystem?.content) optionalSystem.push(scopedSettingsSystem);
-    if (storybookRuleSystem?.content) optionalSystem.push(storybookRuleSystem);
-    const crossoverSys = buildCrossoverCharacterSystemMessage();
+    if (!virtualLoverMode && scopedSettingsSystem?.content) optionalSystem.push(scopedSettingsSystem);
+    const crossoverSys = virtualLoverMode ? null : buildCrossoverCharacterSystemMessage();
     if (crossoverSys?.content) optionalSystem.push(crossoverSys);
     if (globalSettingsSystem?.content) optionalSystem.push(globalSettingsSystem);
     const historySlice = selectHistoryWithinContextBudget(optionalSystem, userText, safeHistory, liveProfile);
@@ -14329,7 +15138,24 @@ function toLlamaTemplateSafeMessages(messages = [], opts = {}) {
   return tail.slice(-maxMessages);
 }
 
+function buildCompactVirtualLoverDirective(userText = '') {
+  const sections = buildVirtualLoverPromptSections();
+  if (!Array.isArray(sections) || sections.length === 0) return EU_VIRTUAL_LOVER_STYLE_SYSTEM;
+  const map = Object.fromEntries(sections.map((s) => [s.key, String(s.text || '').trim()]));
+  const personaText = String(getActiveUserPersonaPromptText() || '').trim();
+  const pieces = [EU_VIRTUAL_LOVER_STYLE_SYSTEM];
+  if (map.char_description) pieces.push(`角色：${map.char_description.slice(0, 320)}`);
+  if (map.char_personality) pieces.push(`性格：${map.char_personality.slice(0, 200)}`);
+  if (map.scenario) pieces.push(`背景：${map.scenario.slice(0, 160)}`);
+  if (personaText) pieces.push(`用户：${personaText.slice(0, 120)}`);
+  const merged = pieces.join('\n').trim();
+  return merged.length > 900 ? `${merged.slice(0, 900)}…` : merged;
+}
+
 function buildCompactStorybookDirective(userText = '') {
+  if (isActiveVirtualLoverChat()) {
+    return buildCompactVirtualLoverDirective(userText);
+  }
   const sections = buildStorybookRuntimePromptSections();
   if (!Array.isArray(sections) || sections.length === 0) return '';
   const map = Object.fromEntries(sections.map(s => [s.key, String(s.text || '').trim()]));
@@ -14345,7 +15171,7 @@ function buildCompactStorybookDirective(userText = '') {
     const sc = map.scenario;
     pieces.push(`场景/开场：${sc.length > 480 ? `${sc.slice(0, 480)}…` : sc}`);
   }
-  if (map.post_history_instructions) {
+  if (map.post_history_instructions && !euComputeAutoContinueBudget().enabled) {
     const ph = String(map.post_history_instructions);
     const phCap = 220;
     const phShort = ph.length > phCap ? `${ph.slice(0, phCap)}…` : ph;
@@ -14413,7 +15239,10 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260518-conv-cloud-v51';
+const EU_CLIENT_BUILD_STAMP = '20260519-mall-orientation-chip-v82';
+
+const EU_VIRTUAL_LOVER_STYLE_SYSTEM =
+  '【虚拟恋人对话模式】以你与用户的亲密对话为主：每轮以直接对白为主体，可穿插 0～2 处极短动作/神态（括号或一行，每处不超过 20 字）。禁止大段场景铺陈、环境描写、旁白小说式铺排；不要写「根据设定」「作为 AI」等元话术。';
 const EU_XAI_DEFAULT_MODEL = 'grok-4.3';
 const EU_RUNTIME_HEALTH = {
   consecutiveStErrors: 0,
@@ -15540,14 +16369,18 @@ function appendStreamingAccumulated(full, piece) {
  * 对齐酒馆 public/script.js shouldAutoContinue：用 getTokenCount(lastMessage.mes) 与 target_length 比较。
  * EU 侧用 estimateTokenCount(整条已合并正文)；单轮 max_tokens 仍仅来自酒馆预设（openai_max_tokens）。
  */
-function shouldAutoContinueReply(fullMergedReply = '', depth = 0) {
+function shouldAutoContinueReply(fullMergedReply = '', depth = 0, rawMergedReply = '') {
   if (depth >= 2) return false;
-  const ac = getStorybookAutoContinueForGeneration();
-  if (!ac.enabled || !ac.allowChatCompletions) return false;
-  if (ac.targetTokens <= 0) return false;
-  const body = String(fullMergedReply || '').trim();
+  const budget = euComputeAutoContinueBudget();
+  if (!budget.enabled || !budget.allowChatCompletions) return false;
+  if (budget.maxTokens <= 0) return false;
+  const body = String(fullMergedReply || rawMergedReply || '').trim();
   if (body.length <= 5) return false;
-  return estimateTokenCount(fullMergedReply) < ac.targetTokens;
+  const tokens = euEstimateReplyTokensForContinue(rawMergedReply || fullMergedReply, fullMergedReply);
+  if (tokens >= budget.maxTokens) return false;
+  if (tokens < budget.minTokens) return true;
+  if (tokens < budget.targetTokens && looksReplyIncomplete(body)) return true;
+  return false;
 }
 
 /** 流式/续写常见：相邻两行「她眼神」与「她眼神里满是…」——后行以前行为前缀，应合并并视为未完结。 */
@@ -15701,6 +16534,7 @@ async function requestAiReplyStream(userText, options = {}, onDelta) {
   const messages = toBackendSafeMessages(builtMessages, { maxMessages: 36 });
   const stPayload = normalizeSeedForPayload(normalizeXaiModelForPayload(buildStGeneratePayload(messages, stResource, charName, liveProfile)));
   assertValidXaiModelOrThrow(stPayload, liveProfile?.sourcePreset || '');
+  euApplyAutoContinueMaxTokens(stPayload);
   stPayload.stream = true;
   pushEuAlignmentProbe(buildEuAlignmentProbe('stream_request', stPayload, messages, liveProfile));
 
@@ -15857,7 +16691,14 @@ async function requestAiReply(userText, options = {}) {
   assertValidXaiModelOrThrow(stPayload, liveProfile?.sourcePreset || '');
   const overrideMaxTokens = Math.max(0, Number(options.maxReplyTokensOverride || 0));
   if (overrideMaxTokens > 0) {
-    stPayload.max_tokens = overrideMaxTokens;
+    const budget = euComputeAutoContinueBudget();
+    const cap =
+      budget.enabled && budget.maxTokens > 0
+        ? Math.min(overrideMaxTokens, Math.ceil(budget.maxTokens * 1.06))
+        : overrideMaxTokens;
+    stPayload.max_tokens = Math.max(64, cap);
+  } else {
+    euApplyAutoContinueMaxTokens(stPayload);
   }
   pushEuAlignmentProbe(buildEuAlignmentProbe('non_stream_request', stPayload, messages, liveProfile));
   updateWorldChatRuntimeStatus();
@@ -16056,13 +16897,14 @@ async function requestAiReply(userText, options = {}) {
   });
   const accBase = String(options.autoContinueAccumulated || '').trim();
   const mergedSoFar = mergeContinuationReply(accBase, reply);
-  if (allowAutoContinue && shouldAutoContinueReply(mergedSoFar, autoContinueDepth)) {
-    const continued = await requestAiReply('请直接延续上一条回复，不要重复前文，从中断处继续完整说完。', {
+  if (allowAutoContinue && shouldAutoContinueReply(mergedSoFar, autoContinueDepth, mergedSoFar)) {
+    const continued = await requestAiReply(euPickContinuationUserPrompt(), {
       charName,
       history: [...history, { role: 'assistant', content: mergedSoFar }],
       autoContinueDepth: autoContinueDepth + 1,
       allowAutoContinue: true,
       autoContinueAccumulated: mergedSoFar,
+      maxReplyTokensOverride: euRemainingAutoContinueTokens(mergedSoFar) || undefined,
       timeoutMs: options.timeoutMs,
       degenerateRetry: options.degenerateRetry,
       skipReplyPostProcess: options.skipReplyPostProcess,
@@ -16922,6 +17764,8 @@ const mallData = [
 ];
 
 let currentMallFilter = 'all';
+/** @type {'all'|'male'|'female'} */
+let currentMallOrientation = 'all';
 let euPublicMallCatalog = [];
 let euPublicMallByUid = new Map();
 let euPublicMallMetaCount = 0;
@@ -17904,10 +18748,24 @@ function getAcquiredLibraryItems(typeFilter) {
       if (devIdx >= 0) item = euMapDevItemToMallItemLight(devItems[devIdx]);
     }
     if (!item && u.startsWith('public-')) {
+      const meta = metaByUid.get(u);
+      const inferredType = normalizeDevType(meta?.type ?? meta?.resourceType);
+      const pub = euPublicMallByUid.get(u);
+      const pubType = normalizeDevType(pub?.type ?? pub?.resourceType);
+      const fallbackType = want || inferredType || pubType || 'storybook';
+      if (want && inferredType && inferredType !== want) continue;
+      if (want && pubType && pubType !== want) continue;
+      if (want === 'character' && !inferredType && !pubType) continue;
+      const titleByType =
+        fallbackType === 'character'
+          ? '已获取的角色卡'
+          : fallbackType === 'setting'
+            ? '已获取的设定集'
+            : '已获取的故事书';
       item = euMapPublicMetaToMallItemLight({
         uid: u,
-        type: want || 'storybook',
-        title: '已获取的故事书',
+        type: fallbackType,
+        title: titleByType,
         desc: '',
         tags: [],
         img: euMallInferPublicThumbUrlFromUid(u),
@@ -18223,6 +19081,60 @@ async function euDevEnterStorybookFromCatalog(catalogKey) {
   await startStorybookChat(uid);
 }
 
+async function startVirtualLoverChat(cardUid) {
+  const uid = String(cardUid || '').trim();
+  if (!uid) {
+    showToast('未找到角色卡', 'warning');
+    return;
+  }
+  let card = euResolveCharacterCardItem(uid);
+  if (!card) {
+    showToast('未找到该角色卡，请先在商城获取', 'warning');
+    return;
+  }
+  if (!getAcquiredSet().has(uid)) {
+    showToast('请先在商城获取该角色卡', 'warning');
+    return;
+  }
+  if (!isVirtualLoverCard(uid)) {
+    addVirtualLoverEntry(uid, card);
+  }
+  try {
+    card = (await euHydrateStorybookForChat(uid)) || card;
+  } catch (e) {
+    console.warn('[EU] startVirtualLoverChat hydrate', e?.message || e);
+  }
+  let opening = String(getStorybookGreeting(card) || euExtractCardOpeningText(card?.raw || card) || '').trim();
+  const charForMacro = String(card.title || '').trim() || '恋人';
+  if (opening && !euIsDefaultStorybookGreeting(opening)) {
+    opening = euSubstituteOpeningMacros(opening, charForMacro);
+  }
+  const convTitle = charForMacro;
+  const convName = `虚拟恋人·${convTitle}`;
+  const convKey = ensureConversationForCharacter(convName);
+  const conv = getConversationByKey(convKey);
+  if (conv) {
+    conv.metadata = conv.metadata || {};
+    conv.metadata.chatMode = 'virtual-lover';
+    conv.metadata.characterCardUid = uid;
+    delete conv.metadata.storybookUid;
+    conv.metadata.storybookOpening = opening || '';
+    conv.metadata.regexLoaded = false;
+    conv.metadata.autoSettingUids = [];
+    conv.updatedAt = Date.now();
+    persistConversationRuntime();
+  }
+  state.activeStorybookUid = null;
+  state.activeStorybookTitle = '';
+  state.activeVirtualLoverCardUid = uid;
+  state.activeRegexRules = [];
+  state.regexLoaded = false;
+  state.storybookScopedSettingUids = [];
+  updateWorldChatFeatureStatus();
+  openWorldChat(convName);
+  showToast('已进入虚拟恋人对话', 'success');
+}
+
 async function startStorybookChat(storybookUid) {
   const sb = String(storybookUid || '').trim();
   if (!sb) {
@@ -18250,10 +19162,13 @@ async function startStorybookChat(storybookUid) {
     if (resolved && !euIsDefaultStorybookGreeting(resolved)) storyOpening = resolved;
   }
   const charForMacro = String(book.title || '').trim() || '角色';
+  storyOpening = euSanitizeStorybookOpeningText(storyOpening);
   if (storyOpening && !euIsDefaultStorybookGreeting(storyOpening)) {
     storyOpening = euSubstituteOpeningMacros(storyOpening, charForMacro);
     book = { ...book, first_mes: storyOpening };
     euPublicOpeningCache.set(sb, storyOpening);
+  } else {
+    storyOpening = '';
   }
 
   const regexRules = (Array.isArray(book.regexRules) && book.regexRules.length)
@@ -18269,6 +19184,7 @@ async function startStorybookChat(storybookUid) {
 
   state.activeStorybookUid = sb;
   state.activeStorybookTitle = book.title;
+  state.activeVirtualLoverCardUid = null;
   state.activeRegexRules = Array.isArray(regexRules) ? regexRules : [];
   state.regexLoaded = regexRuleCount > 0 ? regexLoaded : false;
   state.storybookScopedSettingUids = resolveAutoLinkedSettingUidsForStorybook(book);
@@ -18411,10 +19327,18 @@ function euBackfillAcquiredMetaLight() {
       continue;
     }
     if (u.startsWith('public-')) {
+      const pub = euPublicMallByUid.get(u);
+      const pubType = normalizeDevType(pub?.type ?? pub?.resourceType) || 'storybook';
+      const titleByType =
+        pubType === 'character'
+          ? '已获取的角色卡'
+          : pubType === 'setting'
+            ? '已获取的设定集'
+            : '已获取的故事书';
       euUpsertAcquiredMetaFromItem({
         uid: u,
-        type: 'storybook',
-        title: '已获取的故事书',
+        type: pubType,
+        title: titleByType,
         desc: '',
         tags: [],
         img: euMallInferPublicThumbUrlFromUid(u),
@@ -18916,10 +19840,12 @@ async function acquireMallItem(uid) {
     const inView = euMallPageItems.find((it) => String(it?.uid || '').trim() === u);
     if (inView) preview = euMapPublicMetaToMallItemLight(inView);
     if (!preview && u.startsWith('public-')) {
-      preview = euMapPublicMetaToMallItemLight(inView || {
+      const pub = euPublicMallByUid.get(u);
+      const pubType = normalizeDevType(pub?.type ?? pub?.resourceType) || 'storybook';
+      preview = euMapPublicMetaToMallItemLight(inView || pub || {
         uid: u,
-        type: 'storybook',
-        title: '故事书',
+        type: pubType,
+        title: pubType === 'character' ? '角色卡' : pubType === 'setting' ? '设定集' : '故事书',
         desc: '',
         tags: [],
         img: euMallInferPublicThumbUrlFromUid(u),
@@ -18948,6 +19874,7 @@ async function acquireMallItem(uid) {
     state.euPendingFullResourceUid = u;
     try {
       updateWorldSubmenu();
+      updateVirtualLoverSubmenu();
     } catch {
       /* ignore */
     }
@@ -19004,7 +19931,7 @@ function euMallDetailDescForModal(item, opts = {}) {
       ? `【开场白】\n${euTruncateAtSentenceBoundary(s.replace(/^【开场白】\s*\n?/, ''), maxLen - 8)}`
       : euTruncateAtSentenceBoundary(s, maxLen);
   }
-  return s || '暂无简介';
+  return euFormatDescPlainText(s || '暂无简介');
 }
 
 /** 公共故事书：仅更新 acquired-meta 简介（不写 devItems，防 OOM）。 */
@@ -19064,12 +19991,20 @@ function escapeHtml(text) {
 function openMallDetail(uid) {
   try {
     const u = String(uid || '').trim();
+    const detailCtx = String(state.mallDetailContext || 'mall');
+    state.mallDetailContext = '';
     const item = findMallItemByUid(u);
     if (!item) {
       showToast('未找到该内容', 'error');
       return;
     }
+    const itemType = normalizeDevType(item?.type ?? item?.resourceType);
+    if (detailCtx === 'characterlib' && itemType !== 'character') {
+      showToast('角色卡库仅展示商城「角色卡」分类内容', 'warning');
+      return;
+    }
     state.pendingMallItemUid = u;
+    state.pendingMallDetailContext = detailCtx;
 
     const titleEl = document.getElementById('mall-detail-title');
     const titleInputEl = document.getElementById('mall-detail-title-input');
@@ -19108,17 +20043,37 @@ function openMallDetail(uid) {
       imgEl.textContent = item.emoji || '📦';
     }
 
+    const fromCharLib = detailCtx === 'characterlib';
     if (cancelBtn) {
       cancelBtn.style.display = '';
-      cancelBtn.textContent = '取消';
+      cancelBtn.textContent = fromCharLib ? '关闭' : '取消';
     }
-    btnEl.textContent = isAcquired ? '已获取' : '确定';
-    btnEl.disabled = Boolean(isAcquired);
-    btnEl.onclick = isAcquired
-      ? null
-      : () => {
+    if (fromCharLib) {
+      if (isAcquired) {
+        const inVl = isVirtualLoverCard(u);
+        btnEl.textContent = inVl ? '已是虚拟恋人' : '添加到虚拟恋人';
+        btnEl.disabled = Boolean(inVl);
+        btnEl.onclick = inVl
+          ? null
+          : () => {
+              void confirmAddVirtualLover(u);
+            };
+      } else {
+        btnEl.textContent = '获取';
+        btnEl.disabled = false;
+        btnEl.onclick = () => {
           void confirmAcquireFromMallDetail();
         };
+      }
+    } else {
+      btnEl.textContent = isAcquired ? '已获取' : '确定';
+      btnEl.disabled = Boolean(isAcquired);
+      btnEl.onclick = isAcquired
+        ? null
+        : () => {
+            void confirmAcquireFromMallDetail();
+          };
+    }
 
     showModal('mall-detail-modal');
   } catch (e) {
@@ -19396,7 +20351,7 @@ function euStorybookCardDescForDisplay(item) {
     if (s) return s;
   }
   if (typeof getStorybookGreeting === 'function') {
-    const g = euPlainTextForCardDesc(getStorybookGreeting(item));
+    const g = String(getStorybookGreeting(item) || '').trim();
     const fromG = euOpeningToStoredListDesc(g);
     if (fromG) return euMallListDescForCard({ desc: fromG });
   }
@@ -19414,9 +20369,10 @@ function euMallListDescForCard(item) {
   if (s.startsWith('【开场白】')) {
     s = s.replace(/^【开场白】\s*\n?/, '').trim();
   }
-  s = s.replace(/\s+/g, ' ').trim();
-  if (s.length > 72) s = `${euTruncateAtSentenceBoundary(s, 72)}`;
-  return s;
+  s = euNormalizeReadableParagraphs(s);
+  const firstPara = (s.split(/\n{2,}/)[0] || s.split('\n')[0] || s).replace(/\n/g, ' ').trim();
+  if (firstPara.length > 72) return euTruncateAtSentenceBoundary(firstPara, 72);
+  return firstPara;
 }
 
 function euMallUseLiteCovers() {
@@ -19436,10 +20392,7 @@ function mallCardHtml(item, acquired) {
   const adultBadge = euItemIsAdultForFilter(item) ? '<span class="mall-card-tag" style="border-color:#ef4444;color:#fca5a5;">18+</span>' : '';
   const uidJs = JSON.stringify(itemUid);
   const titleEsc = escapeHtml(String(item.title || ''));
-  const descRaw = euMallListDescForCard(item);
-  const descHtml = descRaw
-    ? `<p class="mall-card-desc">${escapeHtml(descRaw)}</p>`
-    : '<p class="mall-card-desc muted">暂无简介</p>';
+  const descHtml = euMallCardDescBlockHtml(item, euMallListDescForCard(item));
   const tagList = (Array.isArray(item.tags) ? item.tags : []).slice(0, 6);
   const imgNorm = euMallUseLiteCovers() ? '' : euMallCardCoverUrl(item);
   const imgSrc = imgNorm ? euMallCoverImgSrcForMallPublicOnly(imgNorm, item) : '';
@@ -19513,8 +20466,10 @@ function updateMallResultsInfoLine() {
   const start = euMallServerTotal ? (euMallCurrentPage - 1) * EU_MALL_PAGE_SIZE + 1 : 0;
   const end = onPage ? start + onPage - 1 : 0;
   const modeHint = state.allAgesMode ? ' · 全年龄' : '';
+  const orientHint =
+    currentMallOrientation === 'female' ? ' · 女性向' : currentMallOrientation === 'male' ? ' · 男性向' : '';
   const qHint = String(document.getElementById('mall-search')?.value || '').trim() ? ' · 已搜索' : '';
-  info.textContent = `共 ${euMallServerTotal} 条${modeHint}${qHint} · 第 ${euMallCurrentPage}/${euMallTotalPages} 页（本页 ${onPage} 条${onPage && start ? `，${start}-${end}` : ''}）`;
+  info.textContent = `共 ${euMallServerTotal} 条${modeHint}${orientHint}${qHint} · 第 ${euMallCurrentPage}/${euMallTotalPages} 页（本页 ${onPage} 条${onPage && start ? `，${start}-${end}` : ''}）`;
   euMallUpdatePaginationUi();
 }
 
@@ -19525,6 +20480,8 @@ async function euFetchMallServerPage(page, signal) {
   if (keyword) url += `&q=${encodeURIComponent(keyword)}`;
   if (type && type !== 'all') url += `&type=${encodeURIComponent(type)}`;
   if (state.allAgesMode) url += '&sfw=1';
+  if (currentMallOrientation === 'female') url += '&orientation=female';
+  else if (currentMallOrientation === 'male') url += '&orientation=male';
   let res;
   try {
     res = await fetch(normalizeEuFetchUrl(url), { credentials: 'include', signal });
@@ -19543,6 +20500,13 @@ async function euFetchMallServerPage(page, signal) {
     items = items.filter((item) => !euItemIsAdultForFilter(item));
     if (before > items.length && !String(url).includes('sfw=1')) {
       console.warn('[EU] 商城全年龄：服务端未识别 sfw=1，已用前端兜底过滤；请重启 SillyTavern');
+    }
+  }
+  if (currentMallOrientation !== 'all') {
+    const beforeO = items.length;
+    items = items.filter((item) => euItemPassesMallOrientationFilter(item));
+    if (beforeO > items.length && !String(url).includes('orientation=')) {
+      console.warn('[EU] 商城取向：服务端未识别 orientation，已用前端兜底；请重启 SillyTavern');
     }
   }
   return {
@@ -19658,6 +20622,19 @@ function setMallFilter(type, el) {
   currentMallFilter = type;
   document.querySelectorAll('.mall-filter-tag').forEach((tag) => tag.classList.remove('active'));
   el.classList.add('active');
+  filterMall();
+}
+
+function setMallOrientationFilter(orient, el) {
+  const o = orient === 'female' ? 'female' : orient === 'male' ? 'male' : 'all';
+  if (currentMallOrientation === o) {
+    currentMallOrientation = 'all';
+    document.querySelectorAll('.mall-orientation-btn').forEach((btn) => btn.classList.remove('active'));
+  } else {
+    currentMallOrientation = o;
+    document.querySelectorAll('.mall-orientation-btn').forEach((btn) => btn.classList.remove('active'));
+    if (el) el.classList.add('active');
+  }
   filterMall();
 }
 
@@ -20334,7 +21311,7 @@ function previewDevImage(input) {
 function applyImportedDraftToForm(item) {
   document.getElementById('dev-type').value = item.type || 'storybook';
   document.getElementById('dev-title').value = item.title || '';
-  document.getElementById('dev-desc').value = item.desc || '';
+  document.getElementById('dev-desc').value = euFormatDescPlainText(item.desc || '');
   document.getElementById('dev-tags').value = Array.isArray(item.tags) ? item.tags.join(';') : '';
   const devNo = document.getElementById('dev-adult-no');
   const devYes = document.getElementById('dev-adult-yes');
@@ -20456,7 +21433,7 @@ function setDevCatalogProgress(opts) {
     return;
   }
   const kind = String(opts.kind || 'delete');
-  const titleMap = { save: '批量保存进度', delete: '批量删除进度' };
+  const titleMap = { save: '批量保存进度', delete: '批量删除进度', convert: '转换分区进度' };
   if (titleEl) titleEl.textContent = titleMap[kind] || '进度';
   const total = Math.max(0, Number(opts.total) || 0);
   const cur = Math.min(total, Math.max(0, Number(opts.current) || 0));
@@ -20465,7 +21442,7 @@ function setDevCatalogProgress(opts) {
   fill.style.width = `${pct}%`;
   if (bar) bar.setAttribute('aria-valuenow', String(pct));
   const label = String(opts.label || opts.fileName || '').trim();
-  const verbMap = { save: '正在保存', delete: '正在删除' };
+  const verbMap = { save: '正在保存', delete: '正在删除', convert: '正在转换' };
   const verb = verbMap[kind] || '正在处理';
   txt.textContent = total
     ? `${verb} ${cur}/${total}${label ? `：${label}` : ''}`
@@ -21539,6 +22516,177 @@ function toggleSelectAllVisibleDevItems() {
   showToast(allSelected ? '已清空当前可见项勾选' : `已勾选当前可见 ${visible.length} 项`, 'success');
 }
 
+function euDevPartitionTypeLabel(type) {
+  const t = normalizeDevType(type);
+  if (t === 'setting') return '设定集';
+  if (t === 'character') return '角色卡';
+  return '故事书';
+}
+
+function euHideDevPartitionConvertMenu() {
+  const menu = document.getElementById('dev-partition-convert-menu');
+  if (menu) menu.classList.remove('open');
+}
+
+function euToggleDevPartitionConvertMenu(event) {
+  event?.stopPropagation?.();
+  const menu = document.getElementById('dev-partition-convert-menu');
+  if (!menu) return;
+  const opening = !menu.classList.contains('open');
+  document.querySelectorAll('.dev-partition-convert-menu.open').forEach((el) => el.classList.remove('open'));
+  if (opening) menu.classList.add('open');
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.querySelector('.dev-partition-convert');
+  if (!wrap || wrap.contains(e.target)) return;
+  euHideDevPartitionConvertMenu();
+});
+
+async function euConvertCatalogRowPartition(row, targetType, opts = {}) {
+  const ty = normalizeDevType(targetType);
+  if (!['storybook', 'setting', 'character'].includes(ty)) {
+    throw new Error('无效分区类型');
+  }
+  const prevType = normalizeDevType(row?.type ?? row?.resourceType);
+  if (prevType === ty) return { skipped: true };
+
+  const publicId = String(
+    row?.publicResourceId ||
+      (String(row?.uid || '').startsWith('public-') ? String(row.uid).slice('public-'.length) : ''),
+  ).trim();
+
+  if (row.euCatalogPublicOnly || publicId) {
+    if (!publicId) throw new Error('缺少公共资源 id');
+    const res = await stApiRequest('PUT', `/api/eu/mall/resource/${encodeURIComponent(publicId)}`, { type: ty }, 90000);
+    const j = await euSafeHttpJson(res);
+    if (!res.ok) throw new Error(j?.error || `HTTP ${res.status}`);
+    const local = devItems.find((d) => String(d.publicResourceId || '').trim() === publicId);
+    if (local) {
+      local.type = ty;
+      try {
+        await persistDevItems({ skipMigrate: true });
+      } catch {
+        /* ignore */
+      }
+    }
+    const uid = `public-${publicId}`;
+    if (getAcquiredSet().has(uid)) {
+      const existing = euReadAcquiredMetaList().find((m) => String(m?.uid || '').trim() === uid);
+      euUpsertAcquiredMetaFromItem({
+        ...(existing || {}),
+        uid,
+        type: ty,
+        resourceType: ty,
+        title: row.title || existing?.title,
+        desc: row.desc ?? existing?.desc,
+        img: row.img || existing?.img,
+      });
+    }
+    if (Array.isArray(state.euPinnedAcquiredRows)) {
+      state.euPinnedAcquiredRows = state.euPinnedAcquiredRows.map((p) =>
+        String(p?.uid || '').trim() === uid ? { ...p, type: ty, resourceType: ty } : p,
+      );
+    }
+    return { ok: true, uid };
+  }
+
+  const item = devItems.find((i) => String(i.id) === String(row.id));
+  if (!item) throw new Error('未找到本机条目');
+  item.type = ty;
+  if (item.publicResourceId && euMallCapabilities.canPublish) {
+    await euPublishMallResourceFromDevItem(item);
+  } else {
+    await persistDevItems({ skipMigrate: true });
+  }
+  const uid = String(mapDevItemToMallItem(item).uid || '').trim();
+  if (uid && getAcquiredSet().has(uid)) {
+    euUpsertAcquiredMetaFromItem({
+      uid,
+      type: ty,
+      resourceType: ty,
+      title: item.title,
+      desc: item.desc,
+      img: item.img,
+    });
+  }
+  return { ok: true, uid };
+}
+
+async function bulkConvertSelectedDevPartition(targetType) {
+  euHideDevPartitionConvertMenu();
+  if (!euHasMallZoneAdmin()) {
+    showToast('无商城管理权限，无法转换分区', 'warning');
+    return;
+  }
+  const ty = normalizeDevType(targetType);
+  const label = euDevPartitionTypeLabel(ty);
+  const selectedIds = [...selectedDevItemIds];
+  if (!selectedIds.length) {
+    showToast('请先勾选要转换的条目', 'warning');
+    return;
+  }
+  const selectedItems = selectedIds
+    .map((id) => euFindDevCatalogRow(id))
+    .filter((row) => row && euCanManageCatalogRow(row));
+  if (!selectedItems.length) {
+    selectedDevItemIds.clear();
+    renderDevItems();
+    showToast('勾选项已不存在或无权操作', 'warning');
+    return;
+  }
+  const needMove = selectedItems.filter((row) => normalizeDevType(row?.type ?? row?.resourceType) !== ty);
+  if (!needMove.length) {
+    showToast(`勾选项已在「${label}」分区，无需转换`, 'info');
+    return;
+  }
+  const ok = confirm(`将 ${needMove.length} 项转换到「${label}」分区吗？\n已获取用户的资源库分类会同步更新。`);
+  if (!ok) return;
+
+  const convertBtn = document.getElementById('dev-partition-convert-btn');
+  if (convertBtn) convertBtn.disabled = true;
+  let success = 0;
+  let skipped = 0;
+  let failed = 0;
+  let firstErr = '';
+  setDevCatalogProgress({ visible: true, current: 0, total: needMove.length, label: '准备中…', kind: 'convert' });
+  try {
+    for (let i = 0; i < needMove.length; i += 1) {
+      const row = needMove[i];
+      const title = String(row.title || row.euCatalogKey || '').trim().slice(0, 48);
+      setDevCatalogProgress({ visible: true, current: i, total: needMove.length, label: title, kind: 'convert' });
+      try {
+        const r = await euConvertCatalogRowPartition(row, ty, { silent: true });
+        if (r?.skipped) skipped += 1;
+        else success += 1;
+      } catch (e) {
+        failed += 1;
+        if (!firstErr) firstErr = String(e?.message || e);
+        console.warn('[EU] bulkConvertSelectedDevPartition failed', row?.euCatalogKey, e);
+      }
+      setDevCatalogProgress({ visible: true, current: i + 1, total: needMove.length, label: title, kind: 'convert' });
+    }
+    setDevCatalogProgress({ visible: true, current: needMove.length, total: needMove.length, label: '同步商城索引…', kind: 'convert' });
+    await euFetchPublicMallCatalog();
+  } finally {
+    setDevCatalogProgress({ visible: false });
+    if (convertBtn) convertBtn.disabled = false;
+  }
+  renderDevItems();
+  refreshLinkedViews({ force: true });
+  updateWorldSubmenu();
+  updateVirtualLoverSubmenu();
+  if (failed > 0) {
+    const hint = firstErr ? `：${firstErr.slice(0, 100)}` : '';
+    showToast(
+      `转换到「${label}」：成功 ${success}，跳过 ${skipped}，失败 ${failed}${hint}`,
+      failed === needMove.length ? 'error' : 'warning',
+    );
+  } else {
+    showToast(`已转换 ${success} 项到「${label}」${skipped ? `（${skipped} 项已是该分区）` : ''}`, 'success');
+  }
+}
+
 async function bulkDeleteSelectedDevItems() {
   if (!euHasMallZoneAdmin()) {
     showToast('无商城管理权限，无法批量删除（请先启用开发者模式或 mall.publisher）', 'warning');
@@ -21758,10 +22906,7 @@ function renderSettingItems(items) {
     const imgSrc = euMallCoverImgSrcForTag(imgNorm, item);
     const imgContent = euMallSlotCoverHtml('📚', imgSrc);
     const titleEsc = escapeHtml(String(item.title || ''));
-    const descRaw = String(item.desc || '').trim();
-    const descHtml = descRaw
-      ? `<p class="mall-card-desc">${escapeHtml(descRaw)}</p>`
-      : '<p class="mall-card-desc muted">暂无简介</p>';
+    const descHtml = euMallCardDescBlockHtml(item, euMallListDescForCard(item));
     return `
       <div class="mall-card">
         <div class="mall-card-img">${imgContent}</div>
@@ -21811,16 +22956,15 @@ function renderCharacterItems(items) {
   }
   grid.innerHTML = items.map(item => {
     const safeTags = Array.isArray(item.tags) ? item.tags : [];
+    const uid = String(item?.uid || '').trim();
+    const uidJs = JSON.stringify(uid);
     const imgNorm = item.img ? normalizeStoredImagePath(String(item.img)) : '';
     const imgSrc = euMallCoverImgSrcForTag(imgNorm, item);
     const imgContent = euMallSlotCoverHtml('👤', imgSrc);
     const titleEsc = escapeHtml(String(item.title || ''));
-    const descRaw = String(item.desc || '').trim();
-    const descHtml = descRaw
-      ? `<p class="mall-card-desc">${escapeHtml(descRaw)}</p>`
-      : '<p class="mall-card-desc muted">暂无简介</p>';
+    const descHtml = euMallCardDescBlockHtml(item, euMallListDescForCard(item));
     return `
-      <div class="mall-card">
+      <div class="mall-card" role="button" tabindex="0" title="点击查看简介；再次点击可添加到虚拟恋人" onclick='euCharacterLibCardClick(${uidJs})' onkeydown='if(event.key==="Enter"||event.key===" "){event.preventDefault();euCharacterLibCardClick(${uidJs});}'>
         <div class="mall-card-img">${imgContent}</div>
         <div class="mall-card-body">
           <span class="mall-card-type character">角色卡</span>
@@ -21830,7 +22974,7 @@ function renderCharacterItems(items) {
             ${safeTags.map(tag => `<span class="mall-card-tag">${escapeHtml(String(tag))}</span>`).join('')}
           </div>
           <div class="mall-card-footer">
-            <span class="mall-card-price free">查看</span>
+            <span class="mall-card-price free">简介</span>
           </div>
         </div>
       </div>
@@ -21870,7 +23014,7 @@ function openEditModal(id) {
   if (adultGrp) adultGrp.style.display = currentEditMetaOnly ? 'none' : '';
 
   document.getElementById('modal-title').value = item.title;
-  document.getElementById('modal-desc').value = item.desc;
+  document.getElementById('modal-desc').value = euFormatDescPlainText(item.desc || '');
   document.getElementById('modal-tags').value = Array.isArray(item.tags) ? item.tags.join(';') : '';
   const mNo = document.getElementById('modal-adult-no');
   const mYes = document.getElementById('modal-adult-yes');
@@ -22407,9 +23551,7 @@ function storybookCardHtml(item) {
     descRaw = descRaw.replace(/^【开场白】\s*\n?/, '【开场白】 ').trim();
   }
   if (descRaw.length > 160) descRaw = euTruncateAtSentenceBoundary(descRaw, 160);
-  const descHtml = descRaw
-    ? `<p class="mall-card-desc">${escapeHtml(descRaw)}</p>`
-    : '<p class="mall-card-desc muted">暂无简介</p>';
+  const descHtml = euMallCardDescBlockHtml(item, descRaw);
   const uidJs = JSON.stringify(String(item.uid || ''));
   const trashSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>';
   return `
