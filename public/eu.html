@@ -5539,6 +5539,24 @@ function getEuAccountProfileStoreKey() {
 
 /** 上次成功进入 EU 的登录标识，用于刷新后自动 enterApp（与酒馆会话无关）。 */
 const EU_LAST_USER_HANDLE_KEY = 'eu_demo_last_user_handle';
+if (!window.__euConvPersistHook) {
+  window.__euConvPersistHook = true;
+  window.addEventListener('pagehide', () => {
+    try {
+      persistConversationRuntime();
+    } catch {
+      /* ignore */
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'hidden') return;
+    try {
+      persistConversationRuntime();
+    } catch {
+      /* ignore */
+    }
+  });
+}
 /** sessionStorage：灌水区写操作令牌（与酒馆 CSRF 解耦，见 POST /api/eu/tieba/auth/session）。 */
 const EU_TIEBA_API_TOKEN_KEY = 'eu_tieba_api_token';
 
@@ -6214,9 +6232,243 @@ function canEuAutoContinueSecondRequest() {
   return Boolean(ac.enabled && ac.allowChatCompletions);
 }
 
+function getEuLastChatResumeKey() {
+  const userKey = state.currentUser || 'guest';
+  return `eu_demo_last_chat_resume_${userKey}`;
+}
+
+/** 记录上次聊天位置，供关浏览器后再开自动回到对话页。 */
+function persistEuLastChatResume() {
+  const userKey = String(state.currentUser || '').trim();
+  if (!userKey || userKey === 'guest') return;
+  const convKey = String(state.activeConversationKey || '').trim();
+  const conv = convKey ? getConversationByKey(convKey) : null;
+  if (!conv || !Array.isArray(conv.messages) || conv.messages.length === 0) return;
+  const payload = {
+    conversationKey: convKey,
+    characterName: String(conv.characterName || state.worldChatName || '').trim(),
+    storybookUid: String(conv.metadata?.storybookUid || state.activeStorybookUid || '').trim(),
+    updatedAt: Date.now(),
+    cloudAt: Date.now(),
+  };
+  try {
+    localStorage.setItem(getEuLastChatResumeKey(), JSON.stringify(payload));
+  } catch {
+    /* ignore */
+  }
+}
+
+function readEuLastChatResume() {
+  try {
+    const raw = localStorage.getItem(getEuLastChatResumeKey());
+    const j = euSafeJsonParse(raw, null);
+    return j && typeof j === 'object' && !Array.isArray(j) ? j : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearEuLastChatResume() {
+  try {
+    localStorage.removeItem(getEuLastChatResumeKey());
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 登录后自动打开上次会话并渲染历史消息。 */
+async function tryRestoreLastWorldChatSession() {
+  const snap = readEuLastChatResume();
+  if (!snap) return false;
+  let convKey = String(snap.conversationKey || '').trim();
+  let conv = convKey ? getConversationByKey(convKey) : null;
+  if (!conv) {
+    const charName = String(snap.characterName || '').trim();
+    if (charName) {
+      convKey = ensureConversationForCharacter(charName);
+      conv = getConversationByKey(convKey);
+    }
+  }
+  if (!conv || !Array.isArray(conv.messages) || conv.messages.length === 0) return false;
+
+  const uid = String(snap.storybookUid || conv.metadata?.storybookUid || '').trim();
+  if (uid) {
+    state.activeStorybookUid = uid;
+    const title = String(conv.metadata?.storybookTitle || '').trim();
+    if (title) state.activeStorybookTitle = title;
+  }
+
+  state.activeConversationKey = String(conv.key || convKey);
+  const charName = String(conv.characterName || snap.characterName || '').trim();
+  if (!charName) return false;
+  if (charName) state.characterSessions[charName] = state.activeConversationKey;
+
+  await openWorldChat(charName);
+  return true;
+}
+
+function scheduleEuResumeLastChatIfAny() {
+  setTimeout(() => {
+    void tryRestoreLastWorldChatSession().catch((e) => {
+      console.warn('[EU] resume last chat', e?.message || e);
+    });
+  }, 350);
+}
+
+const EU_CONV_CLOUD_MAX_PUSH_BYTES = 3_500_000;
+
+function euConversationCloudLsKeys(handle) {
+  const h = String(handle || '').trim();
+  if (!h || h === 'guest') return [];
+  return [
+    `eu_demo_conversations_${h}`,
+    `eu_demo_character_sessions_${h}`,
+    `eu_demo_last_chat_resume_${h}`,
+  ];
+}
+
+function euTrimConversationStoreJsonForCloud(rawJson) {
+  const raw = String(rawJson || '');
+  if (!raw || raw.length <= EU_CONV_CLOUD_MAX_PUSH_BYTES) return raw;
+  let store = euSafeJsonParse(raw, {});
+  if (!store || typeof store !== 'object' || Array.isArray(store)) return raw.slice(0, EU_CONV_CLOUD_MAX_PUSH_BYTES);
+  const trimmed = {};
+  for (const [key, conv] of Object.entries(store)) {
+    if (!conv || typeof conv !== 'object') continue;
+    const msgs = Array.isArray(conv.messages) ? conv.messages : [];
+    const tail = msgs.length > 96 ? msgs.slice(-96) : msgs;
+    trimmed[key] = {
+      ...conv,
+      messages: tail.map((m) => {
+        if (!m || typeof m !== 'object') return m;
+        const c = String(m.content || '');
+        if (c.length <= 12_000) return m;
+        return { ...m, content: `${c.slice(0, 12_000)}…` };
+      }),
+      updatedAt: Number(conv.updatedAt) || Date.now(),
+    };
+  }
+  let out = JSON.stringify(trimmed);
+  if (out.length > EU_CONV_CLOUD_MAX_PUSH_BYTES) {
+    const keys = Object.keys(trimmed).sort((a, b) => {
+      const ta = Number(trimmed[a]?.updatedAt) || 0;
+      const tb = Number(trimmed[b]?.updatedAt) || 0;
+      return tb - ta;
+    });
+    const keep = {};
+    for (const k of keys) {
+      keep[k] = trimmed[k];
+      out = JSON.stringify(keep);
+      if (out.length <= EU_CONV_CLOUD_MAX_PUSH_BYTES) break;
+    }
+  }
+  return out;
+}
+
+function euConversationCloudTimestamp(items, handle) {
+  const resumeRaw = items?.[`eu_demo_last_chat_resume_${handle}`];
+  const resume = typeof resumeRaw === 'string' ? euSafeJsonParse(resumeRaw, null) : null;
+  return Math.max(Number(resume?.cloudAt) || 0, Number(resume?.updatedAt) || 0);
+}
+
+function euLocalConversationCloudTimestamp(handle) {
+  const snap = readEuLastChatResume();
+  if (snap) return Math.max(Number(snap.cloudAt) || 0, Number(snap.updatedAt) || 0);
+  try {
+    const raw = localStorage.getItem(`eu_demo_conversations_${handle}`) || '';
+    if (!raw || raw.length < 4) return 0;
+    const store = euSafeJsonParse(raw, {});
+    let max = 0;
+    if (store && typeof store === 'object') {
+      for (const c of Object.values(store)) {
+        max = Math.max(max, Number(c?.updatedAt) || 0);
+      }
+    }
+    return max;
+  } catch {
+    return 0;
+  }
+}
+
+/** 从 browser-state 合并对话云快照到本机 localStorage（跨浏览器续聊）。 */
+function euMergeConversationCloudFromServerItems(items, handle) {
+  const h = String(handle || '').trim();
+  if (!h) return false;
+  const convKey = `eu_demo_conversations_${h}`;
+  const sessKey = `eu_demo_character_sessions_${h}`;
+  const resumeKey = `eu_demo_last_chat_resume_${h}`;
+  const serverConv = typeof items?.[convKey] === 'string' ? items[convKey] : '';
+  if (!serverConv || serverConv.length < 4) return false;
+  const serverAt = euConversationCloudTimestamp(items, h);
+  const localAt = euLocalConversationCloudTimestamp(h);
+  let localLen = 0;
+  try {
+    localLen = (localStorage.getItem(convKey) || '').length;
+  } catch {
+    localLen = 0;
+  }
+  if (localAt > serverAt && localLen >= serverConv.length) return false;
+  try {
+    localStorage.setItem(convKey, serverConv);
+    if (typeof items?.[sessKey] === 'string' && items[sessKey].length > 2) {
+      localStorage.setItem(sessKey, items[sessKey]);
+    }
+    if (typeof items?.[resumeKey] === 'string' && items[resumeKey].length > 2) {
+      localStorage.setItem(resumeKey, items[resumeKey]);
+    }
+    return true;
+  } catch (e) {
+    console.warn('[EU] apply conversation cloud', e?.message || e);
+    return false;
+  }
+}
+
+async function euPullConversationCloudBeforeLoad() {
+  const handle = String(state.currentUser || '').trim();
+  if (!handle || handle === 'guest') return false;
+  try {
+    const res = await stApiRequest('GET', '/api/eu/browser-state', {}, 90000);
+    if (res.status === 401 || res.status === 403 || !res.ok) return false;
+    const parsed = await euParseBrowserStateResponse(res, handle);
+    const items = parsed.items || {};
+    euMergeConversationCloudFromServerItems(items, handle);
+    const convKey = `eu_demo_conversations_${handle}`;
+    const serverConv = typeof items[convKey] === 'string' ? items[convKey] : '';
+    let localLen = 0;
+    try {
+      localLen = (localStorage.getItem(convKey) || '').length;
+    } catch {
+      localLen = 0;
+    }
+    const serverAt = euConversationCloudTimestamp(items, handle);
+    const localAt = euLocalConversationCloudTimestamp(handle);
+    if (localLen > 10 && (localAt > serverAt || !serverConv || serverConv.length < 4)) {
+      scheduleEuMallBrowserStatePush();
+    }
+    return true;
+  } catch (e) {
+    console.warn('[EU] conversation cloud pull skipped', e?.message || e);
+    return false;
+  }
+}
+
+async function euEnterAppLoadSessionState() {
+  await euPullConversationCloudBeforeLoad();
+  try {
+    loadUserPersonas();
+    loadConversationRuntime();
+    updateWorldSubmenu();
+  } catch {
+    /* ignore */
+  }
+  scheduleEuResumeLastChatIfAny();
+}
+
 function persistConversationRuntime() {
   localStorage.setItem(getConversationStoreKey(), JSON.stringify(state.conversationStore || {}));
   localStorage.setItem(getCharacterSessionsKey(), JSON.stringify(state.characterSessions || {}));
+  persistEuLastChatResume();
+  scheduleEuMallBrowserStatePush();
 }
 
 function loadGlobalSettingSelection() {
@@ -7991,6 +8243,7 @@ function enterApp(username, opts = {}) {
   }
   loadRuntimePrefs();
   loadGlobalSettingSelection();
+  void euEnterAppLoadSessionState();
   state.activeConversationKey = '';
   state.worldChatName = '';
   ensureWorldChatLayoutSync();
@@ -8143,6 +8396,7 @@ async function doLogout() {
   clearEuAvatarOverride();
   try {
     localStorage.removeItem(EU_LAST_USER_HANDLE_KEY);
+    clearEuLastChatResume();
   } catch {
     /* ignore */
   }
@@ -8161,6 +8415,7 @@ async function doLogout() {
   state.activeConversationKey = '';
   state.conversationStore = {};
   state.characterSessions = {};
+  document.body.dataset.worldChatActive = '';
   showEuLoginPageLayout({ clearLoginForm: true });
 }
 
@@ -8177,6 +8432,7 @@ async function switchToLoginPage() {
   } catch {
     /* ignore */
   }
+  clearEuLastChatResume();
   state.stCsrfToken = '';
   state.currentUser = null;
   clearEuAvatarOverride();
@@ -14157,7 +14413,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260518-bottom-bar-v48';
+const EU_CLIENT_BUILD_STAMP = '20260518-conv-cloud-v51';
 const EU_XAI_DEFAULT_MODEL = 'grok-4.3';
 const EU_RUNTIME_HEALTH = {
   consecutiveStErrors: 0,
@@ -18191,6 +18447,7 @@ function persistHiddenMallUidSet(setObj) {
 /**
  * 与 /api/eu/browser-state 白名单一致：写入 localStorage 的键（不含 heavy，heavy 仅存 IndexedDB，推送时单独组装）。
  * 含 `eu_demo_account_profile_<handle>`（EU 个人资料 JSON，无内嵌大图）与 `eu_demo_dev_heavy`。
+ * 含 `eu_demo_conversations_<handle>` / `eu_demo_character_sessions_<handle>` / `eu_demo_last_chat_resume_<handle>`（跨浏览器续聊）。
  * eu_demo_dev_heavy 在服务端与账号快照中同步，拉取后写入 IndexedDB，不占用 localStorage。
  */
 /** 合并本机与服务端个人资料 JSON，避免空云端快照刷新后冲掉昵称。 */
@@ -18242,8 +18499,15 @@ function euMallBrowserStateLsKeys(handle) {
     EU_DEV_PUBLIC_OVERFLOW_KEY,
     `eu_demo_mall_hidden_uids_${h}`,
     `eu_demo_account_profile_${h}`,
+    ...euConversationCloudLsKeys(h),
   ];
   return keys;
+}
+
+function euIsConversationCloudBrowserStateKey(k, handle) {
+  const h = String(handle || '').trim();
+  if (!h || !k) return false;
+  return euConversationCloudLsKeys(h).includes(String(k));
 }
 
 /** 已获取相关 localStorage 键（与 browser-state 白名单一致）。 */
@@ -18427,12 +18691,16 @@ async function euPushMallBrowserStateNow(opts = {}) {
   const items = {};
   const unifiedSize = euGetUnifiedDevItemsRawByteSize();
   const useSplitOnly = unifiedSize > EU_DEV_LS_SPLIT_BYTES || !!localStorage.getItem(euDevItemsManifestKey());
-  const maxKeyBytes = 400_000;
+  const defaultMaxKeyBytes = 400_000;
   for (const k of keys) {
     if (useSplitOnly && k === 'eu_demo_dev_items') continue;
     try {
-      const v = localStorage.getItem(k);
+      let v = localStorage.getItem(k);
       if (v == null) continue;
+      if (euIsConversationCloudBrowserStateKey(k, handle) && k === `eu_demo_conversations_${handle}`) {
+        v = euTrimConversationStoreJsonForCloud(v);
+      }
+      const maxKeyBytes = euIsConversationCloudBrowserStateKey(k, handle) ? EU_CONV_CLOUD_MAX_PUSH_BYTES : defaultMaxKeyBytes;
       if (String(v).length > maxKeyBytes) {
         console.warn('[EU] browser-state push skip huge key', k, String(v).length);
         continue;
@@ -18515,6 +18783,7 @@ async function euSyncMallBrowserStateAfterLogin(opts = {}) {
     let needPushProfile = false;
     for (const k of euMallBrowserStateLsKeys(handle)) {
       if (lite && EU_LOGIN_SYNC_SKIP_KEYS.has(k)) continue;
+      if (euIsConversationCloudBrowserStateKey(k, handle)) continue;
       if (!Object.prototype.hasOwnProperty.call(serverItems, k)) continue;
       const v = serverItems[k];
       if (typeof v !== 'string' || !v.trim()) continue;

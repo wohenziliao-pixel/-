@@ -45,7 +45,27 @@ function isAllowedKey(handle, key) {
     if (k === `eu_demo_account_profile_${h}`) {
         return true;
     }
+    if (k === `eu_demo_conversations_${h}`) {
+        return true;
+    }
+    if (k === `eu_demo_character_sessions_${h}`) {
+        return true;
+    }
+    if (k === `eu_demo_last_chat_resume_${h}`) {
+        return true;
+    }
     return false;
+}
+
+/** @param {string} key @param {string} val */
+function maxValueBytesForKey(key, val) {
+    if (String(key || '').includes('eu_demo_conversations_')) {
+        return 4_000_000;
+    }
+    if (String(key || '').startsWith('eu_demo_account_profile_') && String(val || '').length > 120_000) {
+        return 0;
+    }
+    return 400_000;
 }
 
 /**
@@ -109,7 +129,8 @@ router.post('/', jsonBody, (req, res) => {
             if (typeof val !== 'string') {
                 continue;
             }
-            if (key.startsWith('eu_demo_account_profile_') && val.length > 120_000) {
+            const maxBytes = maxValueBytesForKey(key, val);
+            if (!maxBytes || val.length > maxBytes) {
                 continue;
             }
             merged.items[key] = val;
