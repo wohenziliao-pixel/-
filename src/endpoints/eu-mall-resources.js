@@ -953,7 +953,9 @@ router.put('/resource/:id', async (req, res) => {
         first_mes: typeof body.first_mes === 'string' ? body.first_mes : String(prev.first_mes || ''),
         raw: body.raw && typeof body.raw === 'object' ? body.raw : (prev.raw && typeof prev.raw === 'object' ? prev.raw : null),
         img: typeof body.img === 'string' ? body.img : (typeof prev.img === 'string' ? prev.img : null),
-        adultContent: body.adultContent === true || prev.adultContent === true,
+        adultContent: Object.prototype.hasOwnProperty.call(body, 'adultContent')
+            ? body.adultContent === true
+            : prev.adultContent === true,
         source: 'public',
         owner: String(prev.owner || req.user?.profile?.handle || 'unknown'),
         updatedAt: now,

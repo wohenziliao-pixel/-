@@ -4309,7 +4309,7 @@ label.eu-add-character-pick input {
         <span class="nav-item-icon">📦</span>
         <span class="nav-item-text">商城管理</span>
       </div>
-      <div class="nav-item has-submenu" id="world-nav-item" data-eu-nav="characters">
+      <div class="nav-item has-submenu" id="world-nav-item" data-eu-nav="characters" title="历史会话记录；侧栏 × 只删本条会话，不会从故事书库移除">
         <div class="nav-header" onclick="toggleWorldSubmenu()">
           <span class="nav-item-icon">🌍</span>
           <span class="nav-item-text">我的世界</span>
@@ -4742,6 +4742,7 @@ label.eu-add-character-pick input {
 
         <!-- 商品网格 -->
         <div class="mall-content">
+          <p class="muted" style="font-size:0.82rem;margin:0 0 6px;line-height:1.45;">已拥有的故事书（世界书）；与侧栏「我的世界」历史会话不同。要从库中移除请点卡片右下角垃圾桶。</p>
           <p class="mall-results-info" id="storybook-count">共找到 0 个故事书</p>
           <div id="storybook-infinite-top-sentinel" class="mall-infinite-sentinel" aria-hidden="true" style="height:4px;margin:0;padding:0;"></div>
           <div class="mall-grid" id="storybook-grid">
@@ -5343,8 +5344,8 @@ label.eu-add-character-pick input {
       <button class="modal-close" onclick="hideModal('delete-modal')">✕</button>
     </div>
     <div class="modal-body">
-      <p>确定要移除会话「<span id="delete-char-name"></span>」吗？此操作不可撤销。</p>
-      <p class="muted" style="margin-top:10px;font-size:13px;line-height:1.5;">默认会清理两层记录：1) 本页浏览器 <code>localStorage</code> 会话；2) SillyTavern 本地 <code>data/*/chats/...</code> 下该故事书对应聊天文件（同故事书会话会联动删除）。</p>
+      <p>确定要从「我的世界」移除会话「<span id="delete-char-name"></span>」吗？此操作不可撤销。</p>
+      <p class="muted" style="margin-top:10px;font-size:13px;line-height:1.5;">仅删除本条<strong>历史会话</strong>（浏览器会话缓存与对应聊天文件）。<strong>不会</strong>从顶栏「故事书」库移出该书；要从库中删除，请到故事书页点卡片右下角垃圾桶。</p>
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="hideModal('delete-modal')">取消</button>
@@ -5689,7 +5690,10 @@ if (!window.__euConvPersistHook) {
   window.__euConvPersistHook = true;
   window.addEventListener('pagehide', () => {
     try {
-      persistConversationRuntime();
+      localStorage.setItem(getConversationStoreKey(), JSON.stringify(state.conversationStore || {}));
+      localStorage.setItem(getCharacterSessionsKey(), JSON.stringify(state.characterSessions || {}));
+      persistEuLastChatResume();
+      void euPushConversationCloudNow({ keepalive: true });
     } catch {
       /* ignore */
     }
@@ -5698,6 +5702,7 @@ if (!window.__euConvPersistHook) {
     if (document.visibilityState !== 'hidden') return;
     try {
       persistConversationRuntime();
+      void euPushConversationCloudNow({ keepalive: true });
     } catch {
       /* ignore */
     }
@@ -6656,11 +6661,20 @@ async function euPullConversationCloudBeforeLoad() {
   const handle = String(state.currentUser || '').trim();
   if (!handle || handle === 'guest') return false;
   try {
-    const res = await stApiRequest('GET', '/api/eu/browser-state', {}, 90000);
-    if (res.status === 401 || res.status === 403 || !res.ok) return false;
-    const parsed = await euParseBrowserStateResponse(res, handle);
-    const items = parsed.items || {};
-    euMergeConversationCloudFromServerItems(items, handle);
+    let items = {};
+    let serverAt = 0;
+    const dedicated = await euFetchConversationCloudItemsFromServer(handle);
+    if (Object.keys(dedicated.items || {}).some((k) => String(dedicated.items[k] || '').length > 4)) {
+      items = dedicated.items;
+      serverAt = dedicated.updatedAt;
+    } else {
+      const res = await stApiRequest('GET', '/api/eu/browser-state', {}, 90000);
+      if (res.status === 401 || res.status === 403 || !res.ok) return false;
+      const parsed = await euParseBrowserStateResponse(res, handle);
+      items = parsed.items || {};
+      serverAt = Number(parsed.updatedAt) || euConversationCloudTimestamp(items, handle);
+    }
+    const merged = euMergeConversationCloudFromServerItems(items, handle);
     const convKey = `eu_demo_conversations_${handle}`;
     const serverConv = typeof items[convKey] === 'string' ? items[convKey] : '';
     let localLen = 0;
@@ -6669,10 +6683,11 @@ async function euPullConversationCloudBeforeLoad() {
     } catch {
       localLen = 0;
     }
-    const serverAt = euConversationCloudTimestamp(items, handle);
     const localAt = euLocalConversationCloudTimestamp(handle);
     if (localLen > 10 && (localAt > serverAt || !serverConv || serverConv.length < 4)) {
-      scheduleEuMallBrowserStatePush();
+      scheduleEuConversationCloudPush();
+    } else if (merged) {
+      console.info('[EU] conversation cloud applied from server');
     }
     return true;
   } catch (e) {
@@ -6699,6 +6714,7 @@ function persistConversationRuntime() {
   localStorage.setItem(getConversationStoreKey(), JSON.stringify(state.conversationStore || {}));
   localStorage.setItem(getCharacterSessionsKey(), JSON.stringify(state.characterSessions || {}));
   persistEuLastChatResume();
+  scheduleEuConversationCloudPush();
   scheduleEuMallBrowserStatePush();
 }
 
@@ -10155,11 +10171,11 @@ function updateWorldSubmenu() {
   if (!submenu) return;
   const characters = typeof getCharacters === 'function' ? getCharacters() : [];
   if (characters.length === 0) {
-    submenu.innerHTML = '<div class="submenu-item" style="color: var(--muted); cursor: default;">暂无对话</div>';
+    submenu.innerHTML = '<div class="submenu-item" style="color: var(--muted); cursor: default;">暂无历史会话</div>';
     return;
   }
   submenu.innerHTML = characters
-    .map(char => `<div class="submenu-item world-submenu-item" onclick='openChatFromSidebar(${JSON.stringify(char.name)}, this)'><div class="world-submenu-avatar">${getConversationAvatarHtml(char.name)}</div><span class="world-submenu-name">${escapeHtml(getConversationDisplayName(char.name))}</span><button type="button" class="world-submenu-close" title="移除会话" onclick='event.stopPropagation();openDeleteConversationModal(${JSON.stringify(char.name)}, ${JSON.stringify(char.sessionKey || '')});'>×</button></div>`)
+    .map(char => `<div class="submenu-item world-submenu-item" onclick='openChatFromSidebar(${JSON.stringify(char.name)}, this)'><div class="world-submenu-avatar">${getConversationAvatarHtml(char.name)}</div><span class="world-submenu-name">${escapeHtml(getConversationDisplayName(char.name))}</span><button type="button" class="world-submenu-close" title="从历史会话移除（不删故事书库）" onclick='event.stopPropagation();openDeleteConversationModal(${JSON.stringify(char.name)}, ${JSON.stringify(char.sessionKey || '')});'>×</button></div>`)
     .join('');
 }
 
@@ -10422,7 +10438,15 @@ function removeConversationRuntime(charName, convKey = null) {
     return { removedCount: 0, removedConversations: [], storybookUid: '', storybookTitle: '' };
   }
   const store = state.conversationStore || {};
-  const resolvedKey = String(convKey || state.characterSessions?.[targetName] || '').trim();
+  let resolvedKey = String(convKey || state.characterSessions?.[targetName] || '').trim();
+  if (!resolvedKey || !store[resolvedKey]) {
+    for (const [k, conv] of Object.entries(store)) {
+      if (String(conv?.characterName || '').trim() === targetName) {
+        resolvedKey = k;
+        break;
+      }
+    }
+  }
   const targetConv = resolvedKey && store[resolvedKey] ? store[resolvedKey] : null;
   const targetBook = findStorybookByConversation(targetName, targetConv);
   const targetStorybookUid = String(targetConv?.metadata?.storybookUid || targetBook?.uid || '').trim();
@@ -10430,7 +10454,6 @@ function removeConversationRuntime(charName, convKey = null) {
 
   const keysToDelete = new Set();
   if (!resolvedKey || !store[resolvedKey]) {
-    // 安全策略：会话删除必须是「按会话 key 精确删除」，禁止按角色名回退批量删除。
     return { removedCount: 0, removedConversations: [], storybookUid: targetStorybookUid, storybookTitle: targetStorybookTitle };
   }
   keysToDelete.add(resolvedKey);
@@ -10571,7 +10594,7 @@ async function doDelete() {
     showToast(
       removedCount > 1
         ? `已移除会话：${label}（同故事书共 ${removedCount} 条本地记录）`
-        : `已移除会话：${label}`,
+        : `已从「我的世界」移除会话：${label}（故事书库未动；要删书请到「故事书」页垃圾桶）`,
       'success',
     );
     if (diskDeleted > 0) {
@@ -15239,7 +15262,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260519-mall-orientation-chip-v82';
+const EU_CLIENT_BUILD_STAMP = '20260519-myworld-vs-storybook-copy-v86';
 
 const EU_VIRTUAL_LOVER_STYLE_SYSTEM =
   '【虚拟恋人对话模式】以你与用户的亲密对话为主：每轮以直接对白为主体，可穿插 0～2 处极短动作/神态（括号或一行，每处不超过 20 字）。禁止大段场景铺陈、环境描写、旁白小说式铺排；不要写「根据设定」「作为 AI」等元话术。';
@@ -18117,7 +18140,10 @@ async function euSavePublicMallMeta(row, patch) {
   const id = String(row?.publicResourceId || '').trim();
   if (!id) throw new Error('缺少 publicResourceId');
   const body = {};
+  if (patch.title !== undefined) body.title = String(patch.title || '').trim();
   if (patch.desc !== undefined) body.desc = String(patch.desc || '').trim();
+  if (patch.tags !== undefined) body.tags = Array.isArray(patch.tags) ? patch.tags : [];
+  if (patch.adultContent !== undefined) body.adultContent = patch.adultContent === true;
   if (patch.img !== undefined && patch.img) body.img = patch.img;
   const res = await stApiRequest('PUT', `/api/eu/mall/resource/${encodeURIComponent(id)}`, body, 90000);
   const j = await res.json().catch(() => ({}));
@@ -18125,7 +18151,10 @@ async function euSavePublicMallMeta(row, patch) {
   await euFetchPublicMallCatalog();
   const local = devItems.find((d) => String(d.publicResourceId || '').trim() === id);
   if (local) {
+    if (patch.title !== undefined) local.title = body.title;
     if (patch.desc !== undefined) local.desc = body.desc;
+    if (patch.tags !== undefined) local.tags = body.tags;
+    if (patch.adultContent !== undefined) local.adultContent = body.adultContent === true;
     if (patch.img && j?.thumb) local.img = j.thumb;
     else if (patch.img) local.img = patch.img;
     await persistDevItems({ skipMigrate: true });
@@ -19232,13 +19261,43 @@ function euInvalidateAcquiredSetCache() {
   euAcquiredSetCacheUser = '';
 }
 
+function euAcquiredStorageGenKey(handle) {
+  return `eu_demo_acquired_gen_${String(handle || state.currentUser || 'guest').trim()}`;
+}
+
+function euGetAcquiredStorageGen(handle) {
+  try {
+    return Math.max(0, Number(localStorage.getItem(euAcquiredStorageGenKey(handle)) || 0) || 0);
+  } catch {
+    return 0;
+  }
+}
+
+function euBumpAcquiredStorageGen() {
+  const h = String(state.currentUser || '').trim();
+  if (!h || h === 'guest') return 0;
+  const next = euGetAcquiredStorageGen(h) + 1;
+  try {
+    localStorage.setItem(euAcquiredStorageGenKey(h), String(next));
+  } catch {
+    /* ignore */
+  }
+  return next;
+}
+
 function persistAcquiredSet(setObj) {
   const userKey = state.currentUser || 'guest';
   const storageKey = `eu_demo_acquired_items_${userKey}`;
   const arr = [...setObj].map((x) => String(x ?? '').trim()).filter(Boolean);
   localStorage.setItem(storageKey, JSON.stringify(arr));
   euInvalidateAcquiredSetCache();
+  euBumpAcquiredStorageGen();
   scheduleEuMallBrowserStatePush();
+}
+
+/** 用户从故事书库移除已获取条目后立刻上传，避免刷新或登录时云端并集把条目又合并回来。 */
+function euPushAcquiredStateAfterUserDelete() {
+  void euPushMallBrowserStateNow({ skipHeavy: state.euSafeLiteMode !== false }).catch(() => {});
 }
 
 /** 已获取列表专用瘦索引（故事书库只读此表，不 parse 整库分片）。 */
@@ -19420,6 +19479,7 @@ function euMallBrowserStateLsKeys(handle) {
     ...euDevItemsSplitStorageKeys(),
     `eu_demo_acquired_items_${h}`,
     `eu_demo_acquired_meta_v1_${h}`,
+    euAcquiredStorageGenKey(h),
     EU_DEV_PUBLIC_OVERFLOW_KEY,
     `eu_demo_mall_hidden_uids_${h}`,
     `eu_demo_account_profile_${h}`,
@@ -19438,10 +19498,15 @@ function euIsConversationCloudBrowserStateKey(k, handle) {
 function euIsLocalAuthoritativeAcquiredKey(k, handle) {
   const h = String(handle || '').trim();
   if (!h || !k) return false;
-  return k === `eu_demo_acquired_items_${h}` || k === `eu_demo_acquired_meta_v1_${h}`;
+  const genKey = euAcquiredStorageGenKey(h);
+  return k === `eu_demo_acquired_items_${h}` || k === `eu_demo_acquired_meta_v1_${h}` || k === genKey;
 }
 
-function euMergeAcquiredUidJsonStrings(localStr, serverStr) {
+function euMergeAcquiredUidJsonStrings(localStr, serverStr, opts = {}) {
+  const localGen = Number(opts.localGen) || 0;
+  const serverGen = Number(opts.serverGen) || 0;
+  if (localGen > serverGen) return String(localStr || '[]');
+  if (serverGen > localGen) return String(serverStr || '[]');
   const a = euSafeJsonParse(String(localStr || ''), []);
   const b = euSafeJsonParse(String(serverStr || ''), []);
   const out = new Set();
@@ -19452,7 +19517,11 @@ function euMergeAcquiredUidJsonStrings(localStr, serverStr) {
   return JSON.stringify([...out]);
 }
 
-function euMergeAcquiredMetaJsonStrings(localStr, serverStr) {
+function euMergeAcquiredMetaJsonStrings(localStr, serverStr, opts = {}) {
+  const localGen = Number(opts.localGen) || 0;
+  const serverGen = Number(opts.serverGen) || 0;
+  if (localGen > serverGen) return String(localStr || '[]');
+  if (serverGen > localGen) return String(serverStr || '[]');
   const a = euSafeJsonParse(String(localStr || ''), []);
   const b = euSafeJsonParse(String(serverStr || ''), []);
   const byUid = new Map();
@@ -19462,6 +19531,12 @@ function euMergeAcquiredMetaJsonStrings(localStr, serverStr) {
     byUid.set(u, row);
   }
   return JSON.stringify([...byUid.values()]);
+}
+
+function euUnpinAcquiredRow(uid) {
+  const u = String(uid || '').trim();
+  if (!u || !Array.isArray(state.euPinnedAcquiredRows)) return;
+  state.euPinnedAcquiredRows = state.euPinnedAcquiredRows.filter((r) => String(r?.uid || '').trim() !== u);
 }
 
 /** 进入故事书/设定/角色库或登录后：刷新已获取缓存并补 meta，不载入整库 devItems。 */
@@ -19504,13 +19579,33 @@ function euBrowserStateLitePullKeys(handle) {
   ];
 }
 
+/** 大快照 partial 解析时也必须含对话键（否则线上整包 >600KB 时会永远拉不到历史）。 */
+function euBrowserStateParseExtractKeys(handle) {
+  return [...euBrowserStateLitePullKeys(handle), ...euConversationCloudLsKeys(handle)];
+}
+
+async function euFetchConversationCloudItemsFromServer(handle) {
+  const h = String(handle || '').trim();
+  if (!h || h === 'guest') return { items: {}, updatedAt: 0 };
+  try {
+    const res = await stApiRequest('GET', '/api/eu/browser-state/conversations', {}, 120000);
+    if (!res.ok) return { items: {}, updatedAt: 0 };
+    const j = await euSafeHttpJson(res);
+    const items = j?.items && typeof j.items === 'object' && !Array.isArray(j.items) ? j.items : {};
+    return { items, updatedAt: Number(j?.updatedAt) || 0 };
+  } catch (e) {
+    console.warn('[EU] conversation cloud dedicated pull failed', e?.message || e);
+    return { items: {}, updatedAt: 0 };
+  }
+}
+
 async function euParseBrowserStateResponse(res, handle) {
   const text = await res.text();
-  const liteKeys = euBrowserStateLitePullKeys(handle);
+  const extractKeys = euBrowserStateParseExtractKeys(handle);
   if (text.length > 600_000) {
     console.warn('[EU] browser-state large, partial extract', text.length);
     return {
-      items: euExtractBrowserStateItemsSlice(text, liteKeys),
+      items: euExtractBrowserStateItemsSlice(text, extractKeys),
       updatedAt: 0,
     };
   }
@@ -19594,6 +19689,68 @@ function euLocalHasMallBrowserPayloadForHandle(handle) {
     /* ignore */
   }
   return false;
+}
+
+let __euConvCloudPushTimer = null;
+function scheduleEuConversationCloudPush() {
+  const h = String(state.currentUser || '').trim();
+  if (!h || h === 'guest') return;
+  if (__euConvCloudPushTimer) clearTimeout(__euConvCloudPushTimer);
+  __euConvCloudPushTimer = setTimeout(() => {
+    __euConvCloudPushTimer = null;
+    void euPushConversationCloudNow().catch(() => {});
+  }, 650);
+}
+
+/**
+ * 仅推送对话三键（线上历史续聊）；关页时 keepalive 避免 2.8s 商城防抖来不及上传。
+ * @returns {Promise<{ok:boolean, skipped?:string[]}>}
+ */
+async function euPushConversationCloudNow(opts = {}) {
+  const handle = String(state.currentUser || '').trim();
+  if (!handle || handle === 'guest') return { ok: false };
+  const convKey = `eu_demo_conversations_${handle}`;
+  const items = {};
+  for (const k of euConversationCloudLsKeys(handle)) {
+    try {
+      let v = localStorage.getItem(k);
+      if (v == null || !String(v).trim()) continue;
+      if (k === convKey) v = euTrimConversationStoreJsonForCloud(v);
+      if (String(v).length > EU_CONV_CLOUD_MAX_PUSH_BYTES) {
+        console.warn('[EU] conversation cloud push skip huge key', k, String(v).length);
+        continue;
+      }
+      items[k] = v;
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!Object.keys(items).length) return { ok: false };
+  try {
+    const csrfToken = await ensureStCsrfToken();
+    const res = await fetch(normalizeEuFetchUrl('/api/eu/browser-state/conversations'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken,
+      },
+      credentials: 'include',
+      keepalive: opts.keepalive === true,
+      body: JSON.stringify({ items }),
+    });
+    const j = await euSafeHttpJson(res);
+    if (!res.ok) {
+      console.warn('[EU] conversation cloud push failed', res.status, j?.error || '');
+      return { ok: false };
+    }
+    if (Array.isArray(j?.skippedKeys) && j.skippedKeys.length) {
+      console.warn('[EU] conversation cloud push skipped keys', j.skippedKeys);
+    }
+    return { ok: true };
+  } catch (e) {
+    console.warn('[EU] conversation cloud push error', e?.message || e);
+    return { ok: false };
+  }
 }
 
 let __euMallBrowserPushTimer = null;
@@ -19712,6 +19869,11 @@ async function euSyncMallBrowserStateAfterLogin(opts = {}) {
       const v = serverItems[k];
       if (typeof v !== 'string' || !v.trim()) continue;
       let toWrite = v;
+      const acquiredGenKey = euAcquiredStorageGenKey(handle);
+      const acquiredMergeOpts = {
+        localGen: euGetAcquiredStorageGen(handle),
+        serverGen: Number(serverItems[acquiredGenKey] || 0) || 0,
+      };
       if (k === `eu_demo_acquired_items_${handle}`) {
         let localRaw = '';
         try {
@@ -19724,7 +19886,7 @@ async function euSyncMallBrowserStateAfterLogin(opts = {}) {
         if (Array.isArray(serverArr) && serverArr.length === 0 && Array.isArray(localArr) && localArr.length > 0) {
           continue;
         }
-        toWrite = euMergeAcquiredUidJsonStrings(localRaw, v);
+        toWrite = euMergeAcquiredUidJsonStrings(localRaw, v, acquiredMergeOpts);
       } else if (k === `eu_demo_acquired_meta_v1_${handle}`) {
         let localRaw = '';
         try {
@@ -19737,7 +19899,11 @@ async function euSyncMallBrowserStateAfterLogin(opts = {}) {
         if (Array.isArray(serverArr) && serverArr.length === 0 && Array.isArray(localArr) && localArr.length > 0) {
           continue;
         }
-        toWrite = euMergeAcquiredMetaJsonStrings(localRaw, v);
+        toWrite = euMergeAcquiredMetaJsonStrings(localRaw, v, acquiredMergeOpts);
+      } else if (k === acquiredGenKey) {
+        const localGen = euGetAcquiredStorageGen(handle);
+        const serverGen = Number(v || 0) || 0;
+        toWrite = String(Math.max(localGen, serverGen));
       }
       if (k === 'eu_demo_dev_items' || k.startsWith('eu_demo_dev_items_')) {
         if (toWrite.length > EU_DEV_LS_HARD_REJECT_BYTES) {
@@ -19795,6 +19961,14 @@ async function euSyncMallBrowserStateAfterLogin(opts = {}) {
     }
     if (needPushProfile) void euPushMallBrowserStateNow({ skipHeavy: lite });
     euRefreshAcquiredLibrariesFromStorage();
+    try {
+      const convPull = await euFetchConversationCloudItemsFromServer(handle);
+      if (euMergeConversationCloudFromServerItems(convPull.items || {}, handle)) {
+        loadConversationRuntime();
+      }
+    } catch (e) {
+      console.warn('[EU] conversation cloud merge after login', e?.message || e);
+    }
     return;
   }
 
@@ -23001,17 +23175,17 @@ function openEditModal(id) {
     return;
   }
   currentEditId = String(row.euCatalogKey);
-  currentEditMetaOnly = row.euCatalogPublicOnly === true;
+  currentEditMetaOnly = false;
   const item = row;
 
   const heading = document.getElementById('dev-modal-heading');
-  if (heading) heading.textContent = currentEditMetaOnly ? '✏️ 修改简介与封面' : '✏️ 修改内容';
+  if (heading) heading.textContent = '✏️ 修改内容';
   const titleGrp = document.getElementById('modal-title-group');
   const tagsGrp = document.getElementById('modal-tags-group');
   const adultGrp = document.getElementById('modal-adult-group');
-  if (titleGrp) titleGrp.style.display = currentEditMetaOnly ? 'none' : '';
-  if (tagsGrp) tagsGrp.style.display = currentEditMetaOnly ? 'none' : '';
-  if (adultGrp) adultGrp.style.display = currentEditMetaOnly ? 'none' : '';
+  if (titleGrp) titleGrp.style.display = '';
+  if (tagsGrp) tagsGrp.style.display = '';
+  if (adultGrp) adultGrp.style.display = '';
 
   document.getElementById('modal-title').value = item.title;
   document.getElementById('modal-desc').value = euFormatDescPlainText(item.desc || '');
@@ -23080,13 +23254,23 @@ async function saveDevItem() {
 
   if (row.euCatalogPublicOnly) {
     try {
-      const patch = { desc };
+      const title = document.getElementById('modal-title').value.trim();
+      if (!title) {
+        showToast('标题不能为空');
+        return;
+      }
+      const patch = {
+        title,
+        desc,
+        tags: parseTagInput(document.getElementById('modal-tags').value),
+        adultContent: document.getElementById('modal-adult-yes')?.checked === true,
+      };
       if (imgPatch) patch.img = imgPatch;
       await euSavePublicMallMeta(row, patch);
       closeDevModal();
       renderDevItems();
       refreshLinkedViews();
-      showToast('已更新商城简介/封面', 'success');
+      showToast('已更新商城条目', 'success');
     } catch (e) {
       showToast(`保存失败：${e?.message || e}`, 'error');
     }
@@ -23136,7 +23320,7 @@ async function euDeleteStorybookFromLibrary(uid, evt) {
   );
   if (!ok) return;
 
-  await removeMallItemFromMyWorld(u, { allowOutsideDevPage: true, skipConfirm: true });
+  await removeMallItemFromMyWorld(u, { allowOutsideDevPage: true, skipConfirm: true, skipToast: true });
 
   const publicId = u.startsWith('public-') ? u.slice('public-'.length) : '';
   const removedRows = [];
@@ -23168,6 +23352,7 @@ async function euDeleteStorybookFromLibrary(uid, evt) {
   refreshLinkedViews();
   updateWorldSubmenu();
   updateWorldChatFeatureStatus();
+  showToast(`已从故事书库移除《${title}》`, 'success');
 }
 
 async function removeMallItemFromMyWorld(uid, opts = {}) {
@@ -23177,7 +23362,7 @@ async function removeMallItemFromMyWorld(uid, opts = {}) {
     showToast('请在开发者模式页面执行移除，普通用户页面不提供该操作', 'warning');
     return false;
   }
-  const item = findMallItemByUid(uid);
+  const item = findMallItemByUid(uid) || euResolveStorybookLibraryItem(uid);
   if (!item) {
     showToast('未找到资源', 'warning');
     return false;
@@ -23186,7 +23371,7 @@ async function removeMallItemFromMyWorld(uid, opts = {}) {
   const typeName = item.type === 'storybook' ? '故事书' : item.type === 'setting' ? '设定集' : '角色卡';
   const skipConfirm = opts?.skipConfirm === true;
   if (!skipConfirm) {
-    const ok = confirm(`将《${title || '未命名资源'}》移出“我的世界”吗？\n仅清理当前用户数据，不会删除商城公用资源。`);
+    const ok = confirm(`将《${title || '未命名资源'}》从故事书库移除吗？\n仅清理本账号已获取记录与相关会话，不会删除商城公用资源。`);
     if (!ok) return false;
   }
 
@@ -23220,10 +23405,15 @@ async function removeMallItemFromMyWorld(uid, opts = {}) {
     if (state.pendingMallItemUid === uid) state.pendingMallItemUid = null;
   }
 
+  euUnpinAcquiredRow(uid);
+  if (hadAcquired) euPushAcquiredStateAfterUserDelete();
+
   refreshLinkedViews();
   updateWorldSubmenu();
   updateWorldChatFeatureStatus();
-  showToast(hadAcquired ? `已移出我的世界：${typeName}` : `该${typeName}本就不在“我的世界”`, hadAcquired ? 'success' : 'warning');
+  if (opts.skipToast !== true) {
+    showToast(hadAcquired ? `已从故事书库移除：${typeName}` : `该${typeName}本不在已获取库中`, hadAcquired ? 'success' : 'warning');
+  }
   return hadAcquired;
 }
 
