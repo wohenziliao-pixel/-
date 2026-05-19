@@ -6711,8 +6711,26 @@ async function euEnterAppLoadSessionState() {
 }
 
 function persistConversationRuntime() {
-  localStorage.setItem(getConversationStoreKey(), JSON.stringify(state.conversationStore || {}));
-  localStorage.setItem(getCharacterSessionsKey(), JSON.stringify(state.characterSessions || {}));
+  const storeKey = getConversationStoreKey();
+  const sessKey = getCharacterSessionsKey();
+  const memStore = state.conversationStore && typeof state.conversationStore === 'object' ? state.conversationStore : {};
+  const memKeys = Object.keys(memStore).length;
+  if (memKeys === 0) {
+    try {
+      const existing = localStorage.getItem(storeKey) || '';
+      if (existing.length > 80) {
+        console.warn('[EU] skip persist empty conversationStore over existing cache', existing.length);
+        persistEuLastChatResume();
+        scheduleEuConversationCloudPush();
+        scheduleEuMallBrowserStatePush();
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  localStorage.setItem(storeKey, JSON.stringify(memStore));
+  localStorage.setItem(sessKey, JSON.stringify(state.characterSessions || {}));
   persistEuLastChatResume();
   scheduleEuConversationCloudPush();
   scheduleEuMallBrowserStatePush();
@@ -7038,8 +7056,20 @@ function euConversationJsonParseReviver(key, value) {
 
 function loadConversationRuntime() {
   try {
-    const rawStore = localStorage.getItem(getConversationStoreKey());
-    if (rawStore && rawStore.length > EU_CONV_STORE_HARD_REJECT_BYTES) {
+    let rawStore = localStorage.getItem(getConversationStoreKey()) || '';
+    if (rawStore.length > EU_CONV_STORE_HARD_REJECT_BYTES) {
+      const trimmed = euTrimConversationStoreJsonForCloud(rawStore);
+      if (trimmed && trimmed.length > 4 && trimmed.length < rawStore.length) {
+        console.warn('[EU] conversation store oversized; loading trimmed snapshot', rawStore.length, '->', trimmed.length);
+        rawStore = trimmed;
+        try {
+          localStorage.setItem(getConversationStoreKey(), trimmed);
+        } catch (e) {
+          console.warn('[EU] could not persist trimmed conversation store', e?.message || e);
+        }
+      }
+    }
+    if (rawStore.length > EU_CONV_STORE_HARD_REJECT_BYTES) {
       console.warn('[EU] conversation store too large, skipped load', rawStore.length);
       state.conversationStore = {};
       state.characterSessions = {};
@@ -15262,7 +15292,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260519-myworld-vs-storybook-copy-v86';
+const EU_CLIENT_BUILD_STAMP = '20260519-conversation-cloud-load-guard-v87';
 
 const EU_VIRTUAL_LOVER_STYLE_SYSTEM =
   '【虚拟恋人对话模式】以你与用户的亲密对话为主：每轮以直接对白为主体，可穿插 0～2 处极短动作/神态（括号或一行，每处不超过 20 字）。禁止大段场景铺陈、环境描写、旁白小说式铺排；不要写「根据设定」「作为 AI」等元话术。';
@@ -19726,18 +19756,26 @@ async function euPushConversationCloudNow(opts = {}) {
     }
   }
   if (!Object.keys(items).length) return { ok: false };
+  const convKey = `eu_demo_conversations_${handle}`;
+  const convPayload = String(items[convKey] || '');
+  if (convPayload.length < 8) return { ok: false };
   try {
-    const csrfToken = await ensureStCsrfToken();
-    const res = await fetch(normalizeEuFetchUrl('/api/eu/browser-state/conversations'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': csrfToken,
-      },
-      credentials: 'include',
-      keepalive: opts.keepalive === true,
-      body: JSON.stringify({ items }),
-    });
+    let res;
+    if (opts.keepalive === true) {
+      const csrfToken = await ensureStCsrfToken();
+      res = await fetch(normalizeEuFetchUrl('/api/eu/browser-state/conversations'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+        },
+        credentials: 'include',
+        keepalive: true,
+        body: JSON.stringify({ items }),
+      });
+    } else {
+      res = await stApiRequest('POST', '/api/eu/browser-state/conversations', { items }, 120000);
+    }
     const j = await euSafeHttpJson(res);
     if (!res.ok) {
       console.warn('[EU] conversation cloud push failed', res.status, j?.error || '');
@@ -19745,13 +19783,49 @@ async function euPushConversationCloudNow(opts = {}) {
     }
     if (Array.isArray(j?.skippedKeys) && j.skippedKeys.length) {
       console.warn('[EU] conversation cloud push skipped keys', j.skippedKeys);
+      return { ok: false, skipped: j.skippedKeys };
     }
+    console.info('[EU] conversation cloud push ok', Object.keys(items), convPayload.length);
     return { ok: true };
   } catch (e) {
     console.warn('[EU] conversation cloud push error', e?.message || e);
     return { ok: false };
   }
 }
+
+/** 控制台：await euDebugConversationCloud() — 本机/线上排查对话云同步。 */
+async function euDebugConversationCloud() {
+  const h = String(state.currentUser || '').trim();
+  if (!h || h === 'guest') return { error: '未登录' };
+  const convKey = `eu_demo_conversations_${h}`;
+  let localLen = 0;
+  let localMsgs = 0;
+  try {
+    const raw = localStorage.getItem(convKey) || '';
+    localLen = raw.length;
+    const store = euSafeJsonParse(raw, {});
+    if (store && typeof store === 'object') {
+      for (const c of Object.values(store)) {
+        if (c && Array.isArray(c.messages)) localMsgs += c.messages.length;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  const pull = await euFetchConversationCloudItemsFromServer(h);
+  const serverConv = String(pull.items?.[convKey] || '');
+  const push = await euPushConversationCloudNow();
+  return {
+    handle: h,
+    build: EU_CLIENT_BUILD_STAMP,
+    localBytes: localLen,
+    localMessages: localMsgs,
+    serverBytes: serverConv.length,
+    serverUpdatedAt: pull.updatedAt,
+    push,
+  };
+}
+if (typeof window !== 'undefined') window.euDebugConversationCloud = euDebugConversationCloud;
 
 let __euMallBrowserPushTimer = null;
 function scheduleEuMallBrowserStatePush() {
@@ -22006,7 +22080,8 @@ const EU_LOGIN_SYNC_SKIP_KEYS = new Set([
   'eu_demo_dev_heavy',
 ]);
 const EU_CONV_STORE_SKIP_BYTES = 900_000;
-const EU_CONV_STORE_HARD_REJECT_BYTES = 3_000_000;
+/** 须 ≥ 云端单键上限（4MB）且与 EU_CONV_CLOUD_MAX_PUSH_BYTES 对齐，避免拉到云快照后因过大拒载再用空 state 覆盖。 */
+const EU_CONV_STORE_HARD_REJECT_BYTES = 4_000_000;
 const EU_DEV_BATCH_SAVE_PAUSE_MS = 400;
 /** 开发者列表底栏分页：每页条数（含封面，比商城略多）。 */
 const DEV_CATALOG_PAGE_SIZE = 12;
