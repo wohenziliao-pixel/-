@@ -76,6 +76,88 @@ function stateFilePath(handle) {
     return path.join(getUserDirectories(handle).root, 'eu-mall-browser-state.json');
 }
 
+/** @param {string} raw */
+function isEmptyConversationStoreJson(raw) {
+    const s = String(raw ?? '').trim();
+    if (!s || s.length < 3) {
+        return true;
+    }
+    try {
+        const o = JSON.parse(s);
+        return !o || typeof o !== 'object' || Array.isArray(o) || Object.keys(o).length === 0;
+    } catch {
+        return true;
+    }
+}
+
+/**
+ * @param {Record<string, string>} items
+ * @param {string} handle
+ */
+function resumeClearedAtFromItems(items, handle) {
+    const k = `eu_demo_last_chat_resume_${String(handle || '').trim()}`;
+    const raw = items?.[k];
+    if (typeof raw !== 'string' || raw.length < 4) {
+        return 0;
+    }
+    try {
+        return Number(JSON.parse(raw)?.clearedAt) || 0;
+    } catch {
+        return 0;
+    }
+}
+
+/**
+ * 云端已 cleared 且 incoming 试图写回非空会话时拒绝（防旧客户端整包 mall push 覆盖 wipe）。
+ * @param {string} handle
+ * @param {Record<string, string>} existingItems
+ * @param {Record<string, string>} incoming
+ * @param {string} key
+ */
+function shouldRejectIncomingConversationKey(handle, existingItems, incoming, key) {
+    const h = String(handle || '').trim();
+    const k = String(key || '');
+    if (!h || !conversationKeysForHandle(h).includes(k)) {
+        return false;
+    }
+    if (k.includes('eu_demo_conversations_') && isEmptyConversationStoreJson(incoming[k])) {
+        return false;
+    }
+    const cleared = resumeClearedAtFromItems(existingItems, h);
+    if (cleared <= 0) {
+        return false;
+    }
+    const resumeKey = `eu_demo_last_chat_resume_${h}`;
+    const incomingResume = incoming[resumeKey];
+    if (typeof incomingResume === 'string' && incomingResume.length > 4) {
+        try {
+            const inCleared = Number(JSON.parse(incomingResume)?.clearedAt) || 0;
+            if (inCleared >= cleared) {
+                return false;
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+    if (k.includes('eu_demo_conversations_') && !isEmptyConversationStoreJson(incoming[k])) {
+        return true;
+    }
+    if (k.includes('eu_demo_character_sessions_') && String(incoming[k] || '').length > 4) {
+        return true;
+    }
+    if (k === resumeKey && String(incoming[k] || '').length > 4) {
+        try {
+            const snap = JSON.parse(incoming[k]);
+            if (!Number(snap?.clearedAt)) {
+                return true;
+            }
+        } catch {
+            return true;
+        }
+    }
+    return false;
+}
+
 /** @param {string} handle */
 function conversationKeysForHandle(handle) {
     const h = String(handle || '').trim();
@@ -172,23 +254,31 @@ router.post('/', jsonBody, (req, res) => {
                 merged.items = {};
             }
         }
+        const savedKeys = [];
+        const skippedKeys = [];
         for (const [key, val] of Object.entries(incoming)) {
             if (!isAllowedKey(handle, key)) {
+                skippedKeys.push(key);
                 continue;
             }
             if (typeof val !== 'string') {
+                skippedKeys.push(key);
+                continue;
+            }
+            if (shouldRejectIncomingConversationKey(handle, merged.items, incoming, key)) {
+                skippedKeys.push(key);
                 continue;
             }
             const maxBytes = maxValueBytesForKey(key, val);
             if (!maxBytes || val.length > maxBytes) {
+                skippedKeys.push(key);
                 continue;
             }
             merged.items[key] = val;
+            savedKeys.push(key);
         }
         merged.updatedAt = Date.now();
         writeFileAtomicSync(fp, JSON.stringify(merged), 'utf8');
-        const savedKeys = Object.keys(incoming).filter((key) => Object.prototype.hasOwnProperty.call(merged.items, key));
-        const skippedKeys = Object.keys(incoming).filter((key) => !savedKeys.includes(key));
         return res.json({ ok: true, updatedAt: merged.updatedAt, savedKeys, skippedKeys });
     } catch (e) {
         console.error('[eu-browser-state] POST', e);
@@ -227,6 +317,10 @@ router.post('/conversations', jsonBody, (req, res) => {
             }
             const val = incoming[key];
             if (typeof val !== 'string') {
+                skippedKeys.push(key);
+                continue;
+            }
+            if (shouldRejectIncomingConversationKey(handle, merged.items, incoming, key)) {
                 skippedKeys.push(key);
                 continue;
             }
