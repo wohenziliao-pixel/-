@@ -6768,8 +6768,21 @@ function euMergeConversationCloudFromServerItems(items, handle) {
     if (typeof items?.[sessKey] === 'string' && items[sessKey].length > 2) {
       localStorage.setItem(sessKey, items[sessKey]);
     }
-    if (typeof items?.[resumeKey] === 'string' && items[resumeKey].length > 2) {
-      localStorage.setItem(resumeKey, items[resumeKey]);
+    let resumeRaw = typeof items?.[resumeKey] === 'string' ? items[resumeKey] : '';
+    if (resumeRaw.length > 2) {
+      try {
+        const rs = euSafeJsonParse(resumeRaw, null);
+        if (rs && typeof rs === 'object') {
+          delete rs.clearedAt;
+          if (!Number(rs.cloudAt)) rs.cloudAt = Date.now();
+          resumeRaw = JSON.stringify(rs);
+        }
+      } catch {
+        /* keep raw */
+      }
+      localStorage.setItem(resumeKey, resumeRaw);
+    } else {
+      euEnsureResumeBeforeConversationCloudPush(h);
     }
     return true;
   } catch (e) {
@@ -6786,15 +6799,20 @@ async function euPullConversationCloudBeforeLoad() {
     let serverAt = 0;
     const convKey = `eu_demo_conversations_${handle}`;
     const dedicated = await euFetchConversationCloudItemsFromServer(handle);
-    if (Object.prototype.hasOwnProperty.call(dedicated.items || {}, convKey)) {
-      items = dedicated.items || {};
-      serverAt = Number(dedicated.updatedAt) || 0;
-    } else {
+    items = dedicated.items || {};
+    serverAt = Number(dedicated.updatedAt) || 0;
+    const dedicatedHasConv = Object.prototype.hasOwnProperty.call(items, convKey);
+    if (!dedicatedHasConv) {
       const res = await stApiRequest('GET', '/api/eu/browser-state', {}, 90000);
-      if (res.status === 401 || res.status === 403 || !res.ok) return false;
-      const parsed = await euParseBrowserStateResponse(res, handle);
-      items = parsed.items || {};
-      serverAt = Number(parsed.updatedAt) || euConversationCloudTimestamp(items, handle);
+      if (res.status === 401 || res.status === 403 || !res.ok) {
+        if (!Object.keys(items).length) return false;
+      } else {
+        const parsed = await euParseBrowserStateResponse(res, handle);
+        for (const k of euConversationCloudLsKeys(handle)) {
+          if (typeof parsed.items?.[k] === 'string') items[k] = parsed.items[k];
+        }
+        serverAt = Math.max(serverAt, Number(parsed.updatedAt) || euConversationCloudTimestamp(items, handle));
+      }
     }
     const mergeResult = euMergeConversationCloudFromServerItems(items, handle);
     const serverConv = typeof items[convKey] === 'string' ? items[convKey] : '';
@@ -6832,7 +6850,7 @@ async function euEnterAppLoadSessionState() {
   await euPullConversationCloudBeforeLoad();
   try {
     loadUserPersonas();
-    loadConversationRuntime();
+    loadConversationRuntime({ skipPersist: true });
     loadVirtualLoverList();
     updateWorldSubmenu();
     updateVirtualLoverSubmenu();
@@ -7196,7 +7214,8 @@ function euConversationJsonParseReviver(key, value) {
   return value;
 }
 
-function loadConversationRuntime() {
+function loadConversationRuntime(opts = {}) {
+  const skipPersist = opts.skipPersist === true;
   try {
     let rawStore = localStorage.getItem(getConversationStoreKey()) || '';
     if (rawStore.length > EU_CONV_STORE_HARD_REJECT_BYTES) {
@@ -7247,7 +7266,7 @@ function loadConversationRuntime() {
     state.characterSessions = {};
   }
   migrateLegacyHistoriesIntoConversationStore();
-  persistConversationRuntime({ cloud: false });
+  if (!skipPersist) persistConversationRuntime({ cloud: false });
   decontaminateAllConversations();
 }
 
@@ -8671,7 +8690,6 @@ function enterApp(username, opts = {}) {
   }
   loadRuntimePrefs();
   loadGlobalSettingSelection();
-  void euEnterAppLoadSessionState();
   state.activeConversationKey = '';
   state.worldChatName = '';
   ensureWorldChatLayoutSync();
@@ -8684,6 +8702,9 @@ function enterApp(username, opts = {}) {
   syncSettingsUiFromPrefs();
   syncSidebarAvatarFromProfile();
   showPage('assistant');
+  void (async () => {
+    await euEnterAppLoadSessionState();
+  })();
   state.__euLiteSyncPending = lite;
   if (lite) {
     euRefreshAcquiredLibrariesFromStorage();
@@ -15496,7 +15517,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260520-conversation-cloud-resume-ensure-v96';
+const EU_CLIENT_BUILD_STAMP = '20260520-conversation-cloud-reopen-restore-v97';
 
 const EU_VIRTUAL_LOVER_STYLE_SYSTEM =
   '【虚拟恋人对话模式】以你与用户的亲密对话为主：每轮以直接对白为主体，可穿插 0～2 处极短动作/神态（括号或一行，每处不超过 20 字）。禁止大段场景铺陈、环境描写、旁白小说式铺排；不要写「根据设定」「作为 AI」等元话术。';
@@ -20349,8 +20370,11 @@ async function euSyncMallBrowserStateAfterLogin(opts = {}) {
     try {
       const convPull = await euFetchConversationCloudItemsFromServer(handle);
       const convMerge = euMergeConversationCloudFromServerItems(convPull.items || {}, handle);
-      if (convMerge === 'cleared' || convMerge === true) {
-        loadConversationRuntime();
+      if (convMerge === 'cleared' && euLocalHasNewChatAfterServerClear(handle)) {
+        scheduleEuConversationCloudPush();
+      } else if (convMerge === 'cleared' || convMerge === true) {
+        loadConversationRuntime({ skipPersist: true });
+        if (convMerge === true) scheduleEuResumeLastChatIfAny();
       }
     } catch (e) {
       console.warn('[EU] conversation cloud merge after login', e?.message || e);
