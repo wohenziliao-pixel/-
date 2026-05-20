@@ -6655,16 +6655,42 @@ function euServerResumeClearedAt(items, handle) {
   return Number(snap?.clearedAt) || 0;
 }
 
-/** 推送前去掉 resume 上残留的 clearedAt，并刷新 cloudAt（便于服务端 v94 识别新会话）。 */
-function euNormalizeResumeBeforeConversationCloudPush(handle) {
+/** 推送前保证 resume 可从对话 store 补全，并去掉 clearedAt（服务端清锁后识别新会话）。 */
+function euEnsureResumeBeforeConversationCloudPush(handle) {
   const h = String(handle || '').trim();
   if (!h) return;
+  const convKey = `eu_demo_conversations_${h}`;
   const resumeKey = `eu_demo_last_chat_resume_${h}`;
-  let snap = readEuLastChatResume();
-  if (!snap || typeof snap !== 'object') return;
-  const hasTarget = String(snap.conversationKey || snap.characterName || '').trim();
-  if (!hasTarget) return;
+  let convRaw = '';
+  try {
+    convRaw = localStorage.getItem(convKey) || '';
+  } catch {
+    return;
+  }
+  if (euIsEmptyConversationStoreJson(convRaw)) return;
+  const store = euSafeJsonParse(convRaw, {});
+  if (!store || typeof store !== 'object' || Array.isArray(store)) return;
   const now = Date.now();
+  let snap = readEuLastChatResume();
+  if (!snap || typeof snap !== 'object' || Array.isArray(snap)) snap = {};
+  let convKeyActive = String(snap.conversationKey || state.activeConversationKey || '').trim();
+  let conv = convKeyActive && store[convKeyActive] ? store[convKeyActive] : null;
+  if (!conv) {
+    const keys = Object.keys(store);
+    if (keys.length) {
+      convKeyActive = keys[0];
+      conv = store[convKeyActive];
+    }
+  }
+  if (!String(snap.conversationKey || snap.characterName || '').trim() && conv) {
+    snap = {
+      conversationKey: convKeyActive,
+      characterName: String(conv.characterName || state.worldChatName || '').trim(),
+      storybookUid: String(conv.metadata?.storybookUid || state.activeStorybookUid || '').trim(),
+      updatedAt: now,
+      cloudAt: now,
+    };
+  }
   snap = { ...snap, cloudAt: now, updatedAt: now };
   delete snap.clearedAt;
   try {
@@ -6674,14 +6700,19 @@ function euNormalizeResumeBeforeConversationCloudPush(handle) {
   }
 }
 
-/** 云端已 wipe 但本机已开始新会话（resume 无 clearedAt、有对话目标且 store 非空）。 */
+function euNormalizeResumeBeforeConversationCloudPush(handle) {
+  euEnsureResumeBeforeConversationCloudPush(handle);
+}
+
+/** 云端已 wipe 但本机已开始新会话（store 非空且 resume 无 clearedAt）。 */
 function euLocalHasNewChatAfterServerClear(handle) {
   const h = String(handle || '').trim();
   if (!h || euIsLocalConversationStoreEmpty(h)) return false;
+  euEnsureResumeBeforeConversationCloudPush(h);
   const snap = readEuLastChatResume();
-  if (!snap) return false;
-  if (Number(snap.clearedAt || 0) > 0) return false;
-  return Boolean(String(snap.conversationKey || snap.characterName || '').trim());
+  if (snap && Number(snap.clearedAt || 0) > 0) return false;
+  if (snap && String(snap.conversationKey || snap.characterName || '').trim()) return true;
+  return true;
 }
 
 /** @returns {false|'cleared'|true} */
@@ -15465,7 +15496,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260520-conversation-cloud-unlock-clear-v94';
+const EU_CLIENT_BUILD_STAMP = '20260520-conversation-cloud-resume-ensure-v95';
 
 const EU_VIRTUAL_LOVER_STYLE_SYSTEM =
   '【虚拟恋人对话模式】以你与用户的亲密对话为主：每轮以直接对白为主体，可穿插 0～2 处极短动作/神态（括号或一行，每处不超过 20 字）。禁止大段场景铺陈、环境描写、旁白小说式铺排；不要写「根据设定」「作为 AI」等元话术。';
@@ -19932,9 +19963,13 @@ async function euPostConversationCloudItems(items, opts = {}) {
     const skippedKeys = Array.isArray(j?.skippedKeys) ? j.skippedKeys : [];
     if (skippedKeys.length) {
       console.warn('[EU] conversation cloud push skipped keys', skippedKeys, 'saved', savedKeys);
-      return { ok: false, skipped: skippedKeys, savedKeys };
+      const out = { ok: false, skipped: skippedKeys, savedKeys };
+      if (typeof window !== 'undefined') window.__euLastConvCloudPush = { ...out, at: Date.now() };
+      return out;
     }
-    return { ok: true, savedKeys, skippedKeys };
+    const out = { ok: true, savedKeys, skippedKeys };
+    if (typeof window !== 'undefined') window.__euLastConvCloudPush = { ...out, at: Date.now() };
+    return out;
   } catch (e) {
     console.warn('[EU] conversation cloud push error', e?.message || e);
     return { ok: false };
@@ -19979,8 +20014,9 @@ async function euPushConversationCloudNow(opts = {}) {
       }
     }
   }
-  euNormalizeResumeBeforeConversationCloudPush(handle);
+  euEnsureResumeBeforeConversationCloudPush(handle);
   const convKey = `eu_demo_conversations_${handle}`;
+  const resumeKey = `eu_demo_last_chat_resume_${handle}`;
   const items = {};
   for (const k of euConversationCloudLsKeys(handle)) {
     try {
@@ -19999,6 +20035,20 @@ async function euPushConversationCloudNow(opts = {}) {
   if (!Object.keys(items).length) return { ok: false };
   const convPayload = String(items[convKey] || '');
   if (convPayload.length < 8) return { ok: false };
+  const resumePayload = String(items[resumeKey] || '');
+  if (resumePayload.length < 8) {
+    console.warn('[EU] conversation cloud push blocked: missing resume in payload', Object.keys(items));
+    return { ok: false, reason: 'missing_resume' };
+  }
+  try {
+    const rs = euSafeJsonParse(resumePayload, null);
+    if (Number(rs?.clearedAt) > 0) {
+      console.warn('[EU] conversation cloud push blocked: resume still has clearedAt');
+      return { ok: false, reason: 'resume_clearedAt' };
+    }
+  } catch {
+    /* ignore */
+  }
   const r = await euPostConversationCloudItems(items, opts);
   const convSaved = Array.isArray(r.savedKeys) ? r.savedKeys.includes(convKey) : r.ok;
   if (r.ok && convSaved) {
@@ -20041,6 +20091,20 @@ async function euDebugConversationCloud() {
   } catch {
     /* ignore */
   }
+  let localResumeLen = 0;
+  let localResumeHasTarget = false;
+  let localResumeHasClearedAt = false;
+  try {
+    const rr = localStorage.getItem(resumeKey) || '';
+    localResumeLen = rr.length;
+    const rs = euSafeJsonParse(rr, null);
+    if (rs && typeof rs === 'object') {
+      localResumeHasTarget = Boolean(String(rs.conversationKey || rs.characterName || '').trim());
+      localResumeHasClearedAt = Number(rs.clearedAt || 0) > 0;
+    }
+  } catch {
+    /* ignore */
+  }
   return {
     handle: h,
     build: EU_CLIENT_BUILD_STAMP,
@@ -20049,6 +20113,9 @@ async function euDebugConversationCloud() {
     localBytes: localLen,
     localConvCount,
     localMessages: localMsgs,
+    localResumeBytes: localResumeLen,
+    localResumeHasTarget,
+    localResumeHasClearedAt,
     localClearedAt: Number(readEuLastChatResume()?.clearedAt || 0),
     serverBytes: serverConv.length,
     serverConvCount,
@@ -20056,6 +20123,16 @@ async function euDebugConversationCloud() {
     serverClearedAt: euServerResumeClearedAt(pull.items || {}, h),
     serverUpdatedAt: pull.updatedAt,
     serverResume: pull.items?.[resumeKey] || null,
+    lastPush:
+      typeof window !== 'undefined' && window.__euLastConvCloudPush
+        ? window.__euLastConvCloudPush
+        : null,
+    hint:
+      localConvCount > 0 && (localResumeHasClearedAt || !localResumeHasTarget)
+        ? '本机有对话但 resume 异常；v95 会在 push 前自动补全。若 lastPush.skipped 含三键，请硬刷新后聊几句再 await euPushConversationCloudNow()'
+        : serverClearedAt > 0 && serverEmpty && localConvCount > 0
+          ? '云端已清理、本机有新会话；需 push 成功且 serverBytes>2'
+          : null,
   };
 }
 if (typeof window !== 'undefined') window.euDebugConversationCloud = euDebugConversationCloud;

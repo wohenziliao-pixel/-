@@ -127,15 +127,27 @@ function incomingIsNewSessionAfterServerClear(existingItems, incoming, handle) {
         return false;
     }
     const raw = incoming[resumeKey];
-    if (typeof raw !== 'string' || raw.length < 4) {
+    if (typeof raw === 'string' && raw.length > 4) {
+        try {
+            const snap = JSON.parse(raw);
+            if (Number(snap?.clearedAt) > 0) {
+                return false;
+            }
+            if (String(snap?.conversationKey || snap?.characterName || '').trim()) {
+                return true;
+            }
+        } catch {
+            /* fall through */
+        }
+    }
+    const sessKey = `eu_demo_character_sessions_${h}`;
+    const sessRaw = incoming[sessKey];
+    if (typeof sessRaw !== 'string' || sessRaw.length < 4 || sessRaw.trim() === '{}') {
         return false;
     }
     try {
-        const snap = JSON.parse(raw);
-        if (Number(snap?.clearedAt) > 0) {
-            return false;
-        }
-        return Boolean(String(snap?.conversationKey || snap?.characterName || '').trim());
+        const sess = JSON.parse(sessRaw);
+        return Boolean(sess && typeof sess === 'object' && !Array.isArray(sess) && Object.keys(sess).length > 0);
     } catch {
         return false;
     }
