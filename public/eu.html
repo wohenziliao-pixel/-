@@ -6637,7 +6637,7 @@ function clearEuLastChatResume() {
   }
 }
 
-/** 登录后自动打开上次会话并渲染历史消息。 */
+/** 打开上次会话并渲染历史消息（仅手动调用；登录进商城不再自动执行）。 */
 async function tryRestoreLastWorldChatSession() {
   const snap = readEuLastChatResume();
   if (!snap) return false;
@@ -6984,7 +6984,7 @@ async function euEnterAppLoadSessionState() {
   } catch {
     /* ignore */
   }
-  scheduleEuResumeLastChatIfAny();
+  /* 对话云已可跨端保存；登录默认进商城，不再自动 openWorldChat 盖住商城页 */
 }
 
 function persistConversationRuntime(opts = {}) {
@@ -15774,7 +15774,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260520-login-mall-orient-labels-v101';
+const EU_CLIENT_BUILD_STAMP = '20260520-login-mall-no-auto-chat-v102';
 
 const EU_VIRTUAL_LOVER_STYLE_SYSTEM =
   '【虚拟恋人对话模式】以你与用户的亲密对话为主：每轮以直接对白为主体，可穿插 0～2 处极短动作/神态（括号或一行，每处不超过 20 字）。禁止大段场景铺陈、环境描写、旁白小说式铺排；不要写「根据设定」「作为 AI」等元话术。';
@@ -20631,7 +20631,6 @@ async function euSyncMallBrowserStateAfterLogin(opts = {}) {
         scheduleEuConversationCloudPush();
       } else if (convMerge === 'cleared' || convMerge === true) {
         loadConversationRuntime({ skipPersist: true });
-        if (convMerge === true) scheduleEuResumeLastChatIfAny();
       }
     } catch (e) {
       console.warn('[EU] conversation cloud merge after login', e?.message || e);
