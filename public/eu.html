@@ -6522,8 +6522,8 @@ async function tryRestoreLastWorldChatSession() {
   if (!conv) {
     const charName = String(snap.characterName || '').trim();
     if (charName) {
-      convKey = ensureConversationForCharacter(charName);
-      conv = getConversationByKey(convKey);
+      convKey = euFindConversationKeyByCharacterName(charName) || '';
+      conv = convKey ? getConversationByKey(convKey) : null;
     }
   }
   if (!conv || !Array.isArray(conv.messages) || conv.messages.length === 0) return false;
@@ -6540,7 +6540,7 @@ async function tryRestoreLastWorldChatSession() {
   if (!charName) return false;
   if (charName) state.characterSessions[charName] = state.activeConversationKey;
 
-  await openWorldChat(charName);
+  await openWorldChat(charName, { forceConvKey: state.activeConversationKey });
   return true;
 }
 
@@ -7596,6 +7596,47 @@ function euFindConversationKeyByCharacterName(charName) {
     }
   }
   return bestKey;
+}
+
+/** 故事书角色名：「故事书-」与「故事书·」视为同一会话。 */
+function euCharacterNamesMatch(a, b) {
+  const x = String(a || '').trim();
+  const y = String(b || '').trim();
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const norm = (s) => {
+    if (s.startsWith('故事书·')) return `故事书-${s.slice(4).trim()}`;
+    if (s.startsWith('故事书-')) return `故事书-${s.slice(4).trim()}`;
+    return s;
+  };
+  return norm(x) === norm(y);
+}
+
+/** 重置开场白时保留全部用户消息（避免重开 openWorldChat 删掉「发生了什么」等）。 */
+function euRebuildMessagesKeepingUserTurns(historyRows, resolvedGreeting, charName) {
+  const rows = Array.isArray(historyRows) ? historyRows : [];
+  const rebuilt = [];
+  let openingDone = false;
+  for (const m of rows) {
+    const isUser = m?.role === 'user' || m?.type === 'user';
+    if (isUser) {
+      const c = String(m?.content || '').trim();
+      if (c && c !== EU_STORYBOOK_START_KICKOFF) rebuilt.push(m);
+      continue;
+    }
+    const isAi = m?.role === 'assistant' || m?.type === 'ai';
+    if (isAi && !openingDone) {
+      rebuilt.push({ role: 'assistant', type: 'ai', content: resolvedGreeting, sender: charName });
+      openingDone = true;
+      continue;
+    }
+    if (isAi && euIsUnusableStorybookOpening(m?.content)) continue;
+    rebuilt.push(m);
+  }
+  if (!openingDone && resolvedGreeting) {
+    rebuilt.unshift({ role: 'assistant', type: 'ai', content: resolvedGreeting, sender: charName });
+  }
+  return rebuilt;
 }
 
 /** 从 conversationStore 反填 characterSessions（pull 后 sessions 丢键时侧栏与恢复依赖此项）。 */
@@ -9511,7 +9552,7 @@ async function euHydrateStorybookForChat(bookOrUid) {
   return fallback;
 }
 
-async function openWorldChat(charName) {
+async function openWorldChat(charName, opts = {}) {
   document.body.dataset.worldChatActive = '1';
   document.getElementById('bottom-input-bar')?.classList.add('visible');
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -9529,18 +9570,24 @@ async function openWorldChat(charName) {
   if (globalInput) {
     globalInput.placeholder = `输入消息给 ${charName}...`;
   }
-  const resumeKey = String(state.activeConversationKey || '').trim();
-  const resumeConv = resumeKey ? getConversationByKey(resumeKey) : null;
-  const resumeName = String(resumeConv?.characterName || '').trim();
-  if (
-    resumeConv &&
-    resumeName === String(charName || '').trim() &&
-    Array.isArray(resumeConv.messages) &&
-    resumeConv.messages.length > 0
-  ) {
-    state.activeConversationKey = resumeKey;
+  const forceKey = String(opts.forceConvKey || '').trim();
+  const forced = forceKey ? getConversationByKey(forceKey) : null;
+  if (forced && Array.isArray(forced.messages) && forced.messages.length > 0) {
+    state.activeConversationKey = forceKey;
   } else {
-    state.activeConversationKey = ensureConversationForCharacter(charName);
+    const resumeKey = String(state.activeConversationKey || '').trim();
+    const resumeConv = resumeKey ? getConversationByKey(resumeKey) : null;
+    const resumeName = String(resumeConv?.characterName || '').trim();
+    if (
+      resumeConv &&
+      euCharacterNamesMatch(resumeName, charName) &&
+      Array.isArray(resumeConv.messages) &&
+      resumeConv.messages.length > 0
+    ) {
+      state.activeConversationKey = resumeKey;
+    } else {
+      state.activeConversationKey = ensureConversationForCharacter(charName);
+    }
   }
   const conv = getConversationByKey(state.activeConversationKey);
   if (conv) {
@@ -9658,9 +9705,16 @@ async function openWorldChat(charName) {
           resolvedGreeting &&
           (historyOnlyDefault || rows.some((m) => euIsUnusableStorybookOpening(m?.content)));
         if (shouldResetOpening) {
-          rows = [{ role: 'assistant', type: 'ai', content: resolvedGreeting, sender: charName }];
+          rows = euRebuildMessagesKeepingUserTurns(rows, resolvedGreeting, charName);
           if (conv) {
-            conv.messages = [{ role: 'assistant', content: resolvedGreeting, sender: charName }];
+            conv.messages = rows.map((m) => {
+              const isUser = m?.role === 'user' || m?.type === 'user';
+              return {
+                role: isUser ? 'user' : 'assistant',
+                content: String(m?.content || ''),
+                sender: m?.sender || (isUser ? getEuPublicDisplayName() || '你' : charName),
+              };
+            });
             conv.metadata = conv.metadata || {};
             conv.metadata.storybookOpening = resolvedGreeting;
             conv.updatedAt = Date.now();
@@ -15587,7 +15641,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260520-conversation-resume-messages-v98';
+const EU_CLIENT_BUILD_STAMP = '20260520-conversation-keep-user-msgs-v99';
 
 const EU_VIRTUAL_LOVER_STYLE_SYSTEM =
   '【虚拟恋人对话模式】以你与用户的亲密对话为主：每轮以直接对白为主体，可穿插 0～2 处极短动作/神态（括号或一行，每处不超过 20 字）。禁止大段场景铺陈、环境描写、旁白小说式铺排；不要写「根据设定」「作为 AI」等元话术。';
