@@ -15496,7 +15496,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260520-conversation-cloud-resume-ensure-v95';
+const EU_CLIENT_BUILD_STAMP = '20260520-conversation-cloud-resume-ensure-v96';
 
 const EU_VIRTUAL_LOVER_STYLE_SYSTEM =
   '【虚拟恋人对话模式】以你与用户的亲密对话为主：每轮以直接对白为主体，可穿插 0～2 处极短动作/神态（括号或一行，每处不超过 20 字）。禁止大段场景铺陈、环境描写、旁白小说式铺排；不要写「根据设定」「作为 AI」等元话术。';
@@ -20105,6 +20105,8 @@ async function euDebugConversationCloud() {
   } catch {
     /* ignore */
   }
+  const serverEmpty = euIsEmptyConversationStoreJson(serverConv);
+  const serverClearedAt = euServerResumeClearedAt(pull.items || {}, h);
   return {
     handle: h,
     build: EU_CLIENT_BUILD_STAMP,
@@ -20119,8 +20121,8 @@ async function euDebugConversationCloud() {
     localClearedAt: Number(readEuLastChatResume()?.clearedAt || 0),
     serverBytes: serverConv.length,
     serverConvCount,
-    serverEmpty: euIsEmptyConversationStoreJson(serverConv),
-    serverClearedAt: euServerResumeClearedAt(pull.items || {}, h),
+    serverEmpty,
+    serverClearedAt,
     serverUpdatedAt: pull.updatedAt,
     serverResume: pull.items?.[resumeKey] || null,
     lastPush:
