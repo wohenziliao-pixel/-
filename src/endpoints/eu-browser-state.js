@@ -139,6 +139,19 @@ function shouldRejectIncomingConversationKey(handle, existingItems, incoming, ke
             /* ignore */
         }
     }
+    if (typeof incomingResume === 'string' && incomingResume.length > 4) {
+        try {
+            const inSnap = JSON.parse(incomingResume);
+            const hasSession = String(inSnap?.conversationKey || inSnap?.characterName || '').trim();
+            const inCloudAt = Number(inSnap?.cloudAt) || 0;
+            const inCleared = Number(inSnap?.clearedAt) || 0;
+            if (hasSession && inCleared <= 0 && inCloudAt > cleared) {
+                return false;
+            }
+        } catch {
+            /* ignore */
+        }
+    }
     if (k.includes('eu_demo_conversations_') && !isEmptyConversationStoreJson(incoming[k])) {
         return true;
     }
@@ -148,6 +161,10 @@ function shouldRejectIncomingConversationKey(handle, existingItems, incoming, ke
     if (k === resumeKey && String(incoming[k] || '').length > 4) {
         try {
             const snap = JSON.parse(incoming[k]);
+            const hasSession = String(snap?.conversationKey || snap?.characterName || '').trim();
+            if (hasSession && !Number(snap?.clearedAt)) {
+                return false;
+            }
             if (!Number(snap?.clearedAt)) {
                 return true;
             }
