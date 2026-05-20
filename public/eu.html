@@ -6655,6 +6655,25 @@ function euServerResumeClearedAt(items, handle) {
   return Number(snap?.clearedAt) || 0;
 }
 
+/** 推送前去掉 resume 上残留的 clearedAt，并刷新 cloudAt（便于服务端 v94 识别新会话）。 */
+function euNormalizeResumeBeforeConversationCloudPush(handle) {
+  const h = String(handle || '').trim();
+  if (!h) return;
+  const resumeKey = `eu_demo_last_chat_resume_${h}`;
+  let snap = readEuLastChatResume();
+  if (!snap || typeof snap !== 'object') return;
+  const hasTarget = String(snap.conversationKey || snap.characterName || '').trim();
+  if (!hasTarget) return;
+  const now = Date.now();
+  snap = { ...snap, cloudAt: now, updatedAt: now };
+  delete snap.clearedAt;
+  try {
+    localStorage.setItem(resumeKey, JSON.stringify(snap));
+  } catch {
+    /* ignore */
+  }
+}
+
 /** 云端已 wipe 但本机已开始新会话（resume 无 clearedAt、有对话目标且 store 非空）。 */
 function euLocalHasNewChatAfterServerClear(handle) {
   const h = String(handle || '').trim();
@@ -15446,7 +15465,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260520-conversation-cloud-save-after-clear-v93';
+const EU_CLIENT_BUILD_STAMP = '20260520-conversation-cloud-unlock-clear-v94';
 
 const EU_VIRTUAL_LOVER_STYLE_SYSTEM =
   '【虚拟恋人对话模式】以你与用户的亲密对话为主：每轮以直接对白为主体，可穿插 0～2 处极短动作/神态（括号或一行，每处不超过 20 字）。禁止大段场景铺陈、环境描写、旁白小说式铺排；不要写「根据设定」「作为 AI」等元话术。';
@@ -19909,11 +19928,13 @@ async function euPostConversationCloudItems(items, opts = {}) {
       console.warn('[EU] conversation cloud push failed', res.status, j?.error || '');
       return { ok: false };
     }
-    if (Array.isArray(j?.skippedKeys) && j.skippedKeys.length) {
-      console.warn('[EU] conversation cloud push skipped keys', j.skippedKeys);
-      return { ok: false, skipped: j.skippedKeys };
+    const savedKeys = Array.isArray(j?.savedKeys) ? j.savedKeys : [];
+    const skippedKeys = Array.isArray(j?.skippedKeys) ? j.skippedKeys : [];
+    if (skippedKeys.length) {
+      console.warn('[EU] conversation cloud push skipped keys', skippedKeys, 'saved', savedKeys);
+      return { ok: false, skipped: skippedKeys, savedKeys };
     }
-    return { ok: true };
+    return { ok: true, savedKeys, skippedKeys };
   } catch (e) {
     console.warn('[EU] conversation cloud push error', e?.message || e);
     return { ok: false };
@@ -19958,6 +19979,7 @@ async function euPushConversationCloudNow(opts = {}) {
       }
     }
   }
+  euNormalizeResumeBeforeConversationCloudPush(handle);
   const convKey = `eu_demo_conversations_${handle}`;
   const items = {};
   for (const k of euConversationCloudLsKeys(handle)) {
@@ -19978,7 +20000,13 @@ async function euPushConversationCloudNow(opts = {}) {
   const convPayload = String(items[convKey] || '');
   if (convPayload.length < 8) return { ok: false };
   const r = await euPostConversationCloudItems(items, opts);
-  if (r.ok) console.info('[EU] conversation cloud push ok', Object.keys(items), convPayload.length);
+  const convSaved = Array.isArray(r.savedKeys) ? r.savedKeys.includes(convKey) : r.ok;
+  if (r.ok && convSaved) {
+    console.info('[EU] conversation cloud push ok', r.savedKeys || Object.keys(items), convPayload.length);
+  } else if (r.ok && !convSaved) {
+    console.warn('[EU] conversation cloud push incomplete: conversations not saved', r.skippedKeys, r.savedKeys);
+    return { ok: false, reason: 'conv_not_saved', ...r };
+  }
   return r;
 }
 
@@ -20006,14 +20034,24 @@ async function euDebugConversationCloud() {
   const pull = await euFetchConversationCloudItemsFromServer(h);
   const serverConv = String(pull.items?.[convKey] || '');
   const resumeKey = `eu_demo_last_chat_resume_${h}`;
+  let serverConvCount = 0;
+  try {
+    const s = euSafeJsonParse(serverConv, {});
+    if (s && typeof s === 'object') serverConvCount = Object.keys(s).length;
+  } catch {
+    /* ignore */
+  }
   return {
     handle: h,
     build: EU_CLIENT_BUILD_STAMP,
+    archiveNote:
+      'EU 聊天记录在 localStorage 三键 + data/<handle>/eu-mall-browser-state.json；默认不写酒馆 chats/*.jsonl',
     localBytes: localLen,
     localConvCount,
     localMessages: localMsgs,
     localClearedAt: Number(readEuLastChatResume()?.clearedAt || 0),
     serverBytes: serverConv.length,
+    serverConvCount,
     serverEmpty: euIsEmptyConversationStoreJson(serverConv),
     serverClearedAt: euServerResumeClearedAt(pull.items || {}, h),
     serverUpdatedAt: pull.updatedAt,

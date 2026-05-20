@@ -108,6 +108,70 @@ function resumeClearedAtFromItems(items, handle) {
 }
 
 /**
+ * 云端曾 wipe（磁盘 resume 含 clearedAt）后，客户端上传的非空新会话（resume 无 clearedAt、有会话目标）。
+ * @param {Record<string, string>} existingItems
+ * @param {Record<string, string>} incoming
+ * @param {string} handle
+ */
+function incomingIsNewSessionAfterServerClear(existingItems, incoming, handle) {
+    const h = String(handle || '').trim();
+    if (!h) {
+        return false;
+    }
+    if (resumeClearedAtFromItems(existingItems, h) <= 0) {
+        return false;
+    }
+    const convKey = `eu_demo_conversations_${h}`;
+    const resumeKey = `eu_demo_last_chat_resume_${h}`;
+    if (isEmptyConversationStoreJson(incoming[convKey])) {
+        return false;
+    }
+    const raw = incoming[resumeKey];
+    if (typeof raw !== 'string' || raw.length < 4) {
+        return false;
+    }
+    try {
+        const snap = JSON.parse(raw);
+        if (Number(snap?.clearedAt) > 0) {
+            return false;
+        }
+        return Boolean(String(snap?.conversationKey || snap?.characterName || '').trim());
+    } catch {
+        return false;
+    }
+}
+
+/** 写入非空会话后解除磁盘上的 clearedAt 锁，避免下次 pull 仍当「已清理」。 */
+function unlockServerClearLockOnMergedResume(mergedItems, handle) {
+    const h = String(handle || '').trim();
+    if (!h) {
+        return;
+    }
+    const convKey = `eu_demo_conversations_${h}`;
+    const resumeKey = `eu_demo_last_chat_resume_${h}`;
+    if (isEmptyConversationStoreJson(mergedItems[convKey])) {
+        return;
+    }
+    const raw = mergedItems[resumeKey];
+    if (typeof raw !== 'string' || raw.length < 4) {
+        return;
+    }
+    try {
+        const snap = JSON.parse(raw);
+        if (!Number(snap?.clearedAt)) {
+            return;
+        }
+        delete snap.clearedAt;
+        if (!Number(snap.cloudAt)) {
+            snap.cloudAt = Date.now();
+        }
+        mergedItems[resumeKey] = JSON.stringify(snap);
+    } catch {
+        /* ignore */
+    }
+}
+
+/**
  * 云端已 cleared 且 incoming 试图写回非空会话时拒绝（防旧客户端整包 mall push 覆盖 wipe）。
  * @param {string} handle
  * @param {Record<string, string>} existingItems
@@ -118,6 +182,9 @@ function shouldRejectIncomingConversationKey(handle, existingItems, incoming, ke
     const h = String(handle || '').trim();
     const k = String(key || '');
     if (!h || !conversationKeysForHandle(h).includes(k)) {
+        return false;
+    }
+    if (incomingIsNewSessionAfterServerClear(existingItems, incoming, h)) {
         return false;
     }
     if (k.includes('eu_demo_conversations_') && isEmptyConversationStoreJson(incoming[k])) {
@@ -139,19 +206,6 @@ function shouldRejectIncomingConversationKey(handle, existingItems, incoming, ke
             /* ignore */
         }
     }
-    if (typeof incomingResume === 'string' && incomingResume.length > 4) {
-        try {
-            const inSnap = JSON.parse(incomingResume);
-            const hasSession = String(inSnap?.conversationKey || inSnap?.characterName || '').trim();
-            const inCloudAt = Number(inSnap?.cloudAt) || 0;
-            const inCleared = Number(inSnap?.clearedAt) || 0;
-            if (hasSession && inCleared <= 0 && inCloudAt > cleared) {
-                return false;
-            }
-        } catch {
-            /* ignore */
-        }
-    }
     if (k.includes('eu_demo_conversations_') && !isEmptyConversationStoreJson(incoming[k])) {
         return true;
     }
@@ -161,10 +215,6 @@ function shouldRejectIncomingConversationKey(handle, existingItems, incoming, ke
     if (k === resumeKey && String(incoming[k] || '').length > 4) {
         try {
             const snap = JSON.parse(incoming[k]);
-            const hasSession = String(snap?.conversationKey || snap?.characterName || '').trim();
-            if (hasSession && !Number(snap?.clearedAt)) {
-                return false;
-            }
             if (!Number(snap?.clearedAt)) {
                 return true;
             }
@@ -349,6 +399,7 @@ router.post('/conversations', jsonBody, (req, res) => {
             merged.items[key] = val;
             savedKeys.push(key);
         }
+        unlockServerClearLockOnMergedResume(merged.items, handle);
         merged.updatedAt = Date.now();
         writeFileAtomicSync(fp, JSON.stringify(merged), 'utf8');
         return res.json({ ok: true, updatedAt: merged.updatedAt, savedKeys, skippedKeys });
