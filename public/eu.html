@@ -3952,10 +3952,24 @@ label.eu-add-character-pick input {
 
 @media (max-width: 900px) {
   .mall-filter-types {
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: wrap;
   }
   .mall-filter-types .mall-filter-tag {
-    width: 100% !important;
+    width: auto !important;
+    flex: 0 1 auto;
+  }
+  .mall-orientation-filters {
+    display: flex !important;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    width: 100%;
+    margin-top: 2px;
+  }
+  .mall-orientation-btn {
+    height: 32px !important;
+    padding: 0 12px !important;
+    font-size: 0.82rem !important;
   }
 }
 
@@ -3966,19 +3980,19 @@ label.eu-add-character-pick input {
 }
 
 .mall-orientation-btn {
-  width: 36px !important;
-  height: 36px !important;
+  width: auto !important;
+  height: 34px !important;
   max-width: none;
   margin: 0 !important;
-  padding: 0 !important;
+  padding: 0 14px !important;
   min-width: 0 !important;
   border-radius: 10px !important;
   border: 1px solid var(--border) !important;
   background: var(--panel-soft) !important;
   color: var(--muted) !important;
-  font-size: 1.15rem !important;
+  font-size: 0.88rem !important;
   font-weight: 500 !important;
-  line-height: 1 !important;
+  line-height: 1.2 !important;
   cursor: pointer;
   display: inline-flex !important;
   align-items: center;
@@ -3986,6 +4000,7 @@ label.eu-add-character-pick input {
   flex: 0 0 auto !important;
   white-space: nowrap;
   box-shadow: none !important;
+  filter: none !important;
   transition: border-color 0.2s, background 0.2s, color 0.2s;
 }
 
@@ -4913,8 +4928,8 @@ label.eu-add-character-pick input {
             <button class="mall-filter-tag" data-type="character" onclick="setMallFilter('character', this)">👤 角色卡</button>
           </div>
           <div class="mall-orientation-filters" role="group" aria-label="取向筛选">
-            <button type="button" class="mall-orientation-btn" id="mall-filter-male" title="男性向" aria-label="男性向" onclick="setMallOrientationFilter('male', this)">♂</button>
-            <button type="button" class="mall-orientation-btn" id="mall-filter-female" title="女性向" aria-label="女性向" onclick="setMallOrientationFilter('female', this)">♀</button>
+            <button type="button" class="mall-orientation-btn" id="mall-filter-male" title="男性向" aria-label="男性向" onclick="setMallOrientationFilter('male', this)">男性向</button>
+            <button type="button" class="mall-orientation-btn" id="mall-filter-female" title="女性向" aria-label="女性向" onclick="setMallOrientationFilter('female', this)">女性向</button>
           </div>
         </div>
 
@@ -8703,7 +8718,7 @@ document.getElementById('login-btn').addEventListener('click', async () => {
     status.textContent = '登录成功，正在进入...';
     status.className = 'status success';
     await euTiebaTryObtainApiTokenAfterLogin(loggedHandle, password);
-    enterApp(loggedHandle, { lite: true });
+    enterApp(loggedHandle, { lite: true, landing: 'mall' });
   } catch (err) {
     status.textContent = `登录失败：${String(err?.message || err)}`;
     status.className = 'status error';
@@ -8912,7 +8927,8 @@ function enterApp(username, opts = {}) {
   updateDevModeUi();
   syncSettingsUiFromPrefs();
   syncSidebarAvatarFromProfile();
-  showPage('assistant');
+  const landing = opts.landing === 'mall' ? 'mall' : 'assistant';
+  showPage(landing);
   void (async () => {
     await euEnterAppLoadSessionState();
   })();
@@ -15758,7 +15774,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260520-bottom-bar-compose-inbox-v100';
+const EU_CLIENT_BUILD_STAMP = '20260520-login-mall-orient-labels-v101';
 
 const EU_VIRTUAL_LOVER_STYLE_SYSTEM =
   '【虚拟恋人对话模式】以你与用户的亲密对话为主：每轮以直接对白为主体，可穿插 0～2 处极短动作/神态（括号或一行，每处不超过 20 字）。禁止大段场景铺陈、环境描写、旁白小说式铺排；不要写「根据设定」「作为 AI」等元话术。';
