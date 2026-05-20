@@ -1920,36 +1920,138 @@ body.eu-page-chatroom .main-content {
 }
 .bottom-input-bar .card {
   margin: 0;
-  padding: 14px 16px;
+  padding: 12px 14px;
   display: flex;
-  gap: 10px;
-  align-items: stretch;
+  gap: 0;
+  align-items: center;
   position: relative;
 }
-.bottom-input-bar .card > #assistant-input {
+/* 覆盖全局 button/textarea{width:100%}，底栏为单行横向布局 */
+.bottom-input-bar button {
+  width: auto;
+  max-width: none;
+  margin-top: 0;
+}
+.bottom-input-bar .bottom-input-compose {
   flex: 1 1 auto;
   min-width: 0;
-}
-.bottom-input-bar .tools-trigger {
-  width: 42px;
-  height: 42px;
+  width: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  background: var(--panel-soft);
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: var(--panel-soft);
+}
+.bottom-input-bar .bottom-input-tools {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
+  flex: 0 0 auto;
+  padding: 0 0 0 4px;
+}
+.bottom-input-bar .tools-trigger {
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  height: 28px;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  border-radius: 6px;
+  background: transparent !important;
   color: var(--text);
-  font-size: 1.2rem;
+  font-size: 0.88rem;
   line-height: 1;
+  font-weight: 400;
   cursor: pointer;
   flex-shrink: 0;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.2s, background 0.2s;
+  transition: opacity 0.15s, background 0.15s;
+  box-sizing: border-box;
+  filter: none !important;
 }
 .bottom-input-bar .tools-trigger:hover,
+.bottom-input-bar .tools-trigger:focus,
+.bottom-input-bar .tools-trigger:focus-visible,
 .bottom-input-bar .tools-trigger.active {
-  border-color: var(--primary);
-  background: var(--primary-soft);
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  filter: none !important;
+  opacity: 1;
+}
+.bottom-input-bar .bottom-input-compose textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  margin-top: 0 !important;
+  resize: none;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent;
+  border-radius: 0;
+  padding: 10px 8px 10px 4px;
+  font-size: 0.95rem;
+  color: var(--text);
+  min-height: 44px;
+  max-height: 180px;
+  outline: none;
+  box-sizing: border-box;
+}
+.bottom-input-bar .bottom-input-compose textarea::placeholder {
+  color: var(--muted);
+}
+.bottom-input-bar .bottom-input-compose textarea:focus {
+  border: none !important;
+  box-shadow: none !important;
+}
+.bottom-input-bar .bottom-input-send-btn {
+  flex: 0 0 auto;
+  width: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  height: 34px;
+  margin: 0 4px 0 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #676af0, #5a5ddc) !important;
+  border-color: transparent !important;
+  color: #fff;
+  font-size: 1rem;
+  line-height: 1;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s, transform 0.15s;
+  box-sizing: border-box;
+  filter: none !important;
+}
+.bottom-input-bar .bottom-input-send-btn:hover,
+.bottom-input-bar .bottom-input-send-btn:focus,
+.bottom-input-bar .bottom-input-send-btn:focus-visible {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+  opacity: 0.92;
+}
+.bottom-input-bar .bottom-input-send-btn:active {
+  transform: scale(0.96);
 }
 .bottom-input-bar .tools-trigger.hidden-by-context {
   display: none;
@@ -2223,22 +2325,6 @@ label.eu-add-character-pick input {
     grid-template-columns: 1fr;
   }
 }
-.bottom-input-bar textarea {
-  flex: 1 1 auto;
-  min-width: 0;
-  width: 100%;
-  resize: none;
-  border: none;
-  background: var(--panel-soft);
-  border-radius: 10px;
-  padding: 14px 16px;
-  font-size: 0.95rem;
-  color: var(--text);
-  min-height: 58px;
-  max-height: 180px;
-  outline: none;
-}
-.bottom-input-bar textarea::placeholder { color: var(--muted); }
 /* 移动端底栏须写在本段之后，否则会被上方 .bottom-input-bar { left:220px } 覆盖 */
 @media (max-width: 900px) {
   .bottom-input-bar {
@@ -2257,11 +2343,37 @@ label.eu-add-character-pick input {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+    gap: 0;
+    padding: 8px 8px max(8px, env(safe-area-inset-bottom, 0px));
   }
-  .bottom-input-bar textarea {
-    flex: 1 1 auto;
+  .bottom-input-bar .bottom-input-tools {
+    padding-left: 2px;
+  }
+  .bottom-input-bar .tools-trigger {
+    width: 26px !important;
+    min-width: 26px !important;
+    max-width: 26px !important;
+    height: 26px;
+    font-size: 0.82rem;
+    border-radius: 4px;
+  }
+  .bottom-input-bar .bottom-input-compose {
+    flex: 1 1 0%;
     min-width: 0;
-    width: 0;
+    width: 100%;
+  }
+  .bottom-input-bar .bottom-input-compose textarea {
+    min-height: 44px;
+    padding: 10px 6px 10px 2px;
+    font-size: 16px;
+  }
+  .bottom-input-bar .bottom-input-send-btn {
+    width: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    height: 32px;
+    margin-right: 3px !important;
+    font-size: 0.95rem;
   }
 }
 
@@ -14004,20 +14116,25 @@ function dismissDevBulkDeleteToast() {}
 <!-- 底部固定输入框 -->
 <div class="bottom-input-bar" id="bottom-input-bar">
   <div class="card">
-    <button id="chat-tools-trigger" class="tools-trigger" type="button" title="脚本工具" onclick="toggleChatToolsMenu(event)">☰</button>
-    <button id="chat-ai-assist-trigger" class="tools-trigger" type="button" title="AI帮答" onclick="toggleAiAssistPanel(event)">💡</button>
-    <div id="chat-tools-menu" class="chat-tools-menu" role="menu" aria-hidden="true">
-      <button class="chat-tools-item" type="button" onclick="handleChatToolAction('new-rule')"><span class="icon">🧩</span><span>新增规则</span></button>
-      <button class="chat-tools-item" type="button" onclick="handleChatToolAction('persona')"><span class="icon">🪪</span><span>用户画像</span></button>
-      <button class="chat-tools-item" type="button" onclick="handleChatToolAction('add-character')"><span class="icon">👥</span><span>添加角色</span></button>
-      <button class="chat-tools-item" type="button" onclick="handleChatToolAction('regenerate')"><span class="icon">↻</span><span>重新生成</span></button>
-      <button class="chat-tools-item" type="button" onclick="handleChatToolAction('continue')"><span class="icon">➤</span><span>续写</span></button>
+    <div class="bottom-input-compose">
+      <div class="bottom-input-tools">
+        <button id="chat-tools-trigger" class="tools-trigger" type="button" title="脚本工具" onclick="toggleChatToolsMenu(event)">☰</button>
+        <button id="chat-ai-assist-trigger" class="tools-trigger" type="button" title="AI帮答" onclick="toggleAiAssistPanel(event)">💡</button>
+      </div>
+      <div id="chat-tools-menu" class="chat-tools-menu" role="menu" aria-hidden="true">
+        <button class="chat-tools-item" type="button" onclick="handleChatToolAction('new-rule')"><span class="icon">🧩</span><span>新增规则</span></button>
+        <button class="chat-tools-item" type="button" onclick="handleChatToolAction('persona')"><span class="icon">🪪</span><span>用户画像</span></button>
+        <button class="chat-tools-item" type="button" onclick="handleChatToolAction('add-character')"><span class="icon">👥</span><span>添加角色</span></button>
+        <button class="chat-tools-item" type="button" onclick="handleChatToolAction('regenerate')"><span class="icon">↻</span><span>重新生成</span></button>
+        <button class="chat-tools-item" type="button" onclick="handleChatToolAction('continue')"><span class="icon">➤</span><span>续写</span></button>
+      </div>
+      <div id="chat-ai-assist-panel" class="chat-ai-assist-panel" aria-hidden="true">
+        <div class="chat-ai-assist-title">AI帮答：点击草稿可填入输入框（不自动发送）</div>
+        <div id="chat-ai-assist-body" class="chat-ai-assist-hint">点击左侧 💡 生成草稿，点草稿填入输入框（不自动发送）</div>
+      </div>
+      <textarea id="assistant-input" placeholder="输入消息…（Enter 发送，Shift+Enter 换行）" onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendMessage();}"></textarea>
+      <button type="button" id="assistant-send-btn" class="bottom-input-send-btn" title="发送" aria-label="发送" onclick="sendMessage()">➤</button>
     </div>
-    <div id="chat-ai-assist-panel" class="chat-ai-assist-panel" aria-hidden="true">
-      <div class="chat-ai-assist-title">AI帮答：点击草稿可填入输入框（不自动发送）</div>
-      <div id="chat-ai-assist-body" class="chat-ai-assist-hint">点击左侧 💡 生成草稿，点草稿填入输入框（不自动发送）</div>
-    </div>
-    <textarea id="assistant-input" placeholder="输入消息…（Enter 发送，Shift+Enter 换行）" onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendMessage();}"></textarea>
   </div>
 </div>
 
@@ -15641,7 +15758,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260520-conversation-keep-user-msgs-v99';
+const EU_CLIENT_BUILD_STAMP = '20260520-bottom-bar-compose-inbox-v100';
 
 const EU_VIRTUAL_LOVER_STYLE_SYSTEM =
   '【虚拟恋人对话模式】以你与用户的亲密对话为主：每轮以直接对白为主体，可穿插 0～2 处极短动作/神态（括号或一行，每处不超过 20 字）。禁止大段场景铺陈、环境描写、旁白小说式铺排；不要写「根据设定」「作为 AI」等元话术。';
