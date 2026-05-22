@@ -8057,6 +8057,15 @@ async function ensureStCsrfToken() {
 
 async function stApiRequest(method, url, bodyObj, timeoutMs = 45000, extraHeaders) {
   const m = String(method || 'POST').toUpperCase();
+  if (isEuGuestMode() && m === 'GET' && String(url || '').startsWith('/api/eu/mall/')) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.max(1000, Number(timeoutMs) || 45000));
+    try {
+      return await fetch(normalizeEuFetchUrl(url), { method: 'GET', credentials: 'include', signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   for (let attempt = 0; attempt < 2; attempt++) {
     const csrfToken = await ensureStCsrfToken();
     const controller = new AbortController();
@@ -8253,6 +8262,21 @@ async function euPublicJsonPost(path, bodyObj, timeoutMs = 45000) {
 }
 
 async function stGeneratePost(bodyObj, timeoutMs = 45000) {
+  if (isEuGuestMode()) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.max(1000, Number(timeoutMs) || 45000));
+    try {
+      return await fetch(normalizeEuFetchUrl('/api/eu/guest/generate'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(bodyObj && typeof bodyObj === 'object' ? bodyObj : {}),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   let lastRes = null;
   for (const url of getStGenerateApiCandidates()) {
     const res = await stApiPost(url, bodyObj, timeoutMs);
@@ -9457,7 +9481,7 @@ function enterGuestApp(opts = {}) {
       sessionStorage.setItem('eu_guest_hint_shown', '1');
       setTimeout(() => {
         showToast(
-          '当前为游客：故事书对话限 10 句且不保存；灌水区不可发帖。满意后请点右上角「登入」。',
+          '当前为游客：可逛商城、获取故事书；对话限 10 句且不保存记录；灌水区不可发帖。满意后请点右上角「登入」。',
           'info',
         );
       }, 800);
@@ -16879,7 +16903,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260522-account-data-storybook-public-v118';
+const EU_CLIENT_BUILD_STAMP = '20260522-guest-mall-acquire-chat-trial-v119';
 /** 游客模式：故事书对话单会话内 user 消息上限（不含隐藏的开场 kickoff）。 */
 const EU_GUEST_MAX_USER_MESSAGES = 10;
 
@@ -17650,6 +17674,27 @@ async function fetchStLiveGenerationProfile(opts = {}) {
   if (stLiveConfigCache && (allowStale || now - stLiveConfigAt < 60000)) {
     return applyEuReplyMaxTokensToProfile(resolveEuLiveProfileForGeneration({ ...stLiveConfigCache }));
   }
+  if (isEuGuestMode()) {
+    try {
+      const res = await fetch(normalizeEuFetchUrl('/api/eu/guest/generation-profile'), { credentials: 'include' });
+      if (!res.ok) return null;
+      const j = await euSafeHttpJson(res);
+      const profile = {
+        chat_completion_source: 'xai',
+        custom_url: '',
+        model: String(j?.model || EU_XAI_DEFAULT_MODEL).trim() || EU_XAI_DEFAULT_MODEL,
+        max_context: Number(j?.max_context) || EU_DEFAULT_CONTEXT_TOKENS,
+        max_tokens: Number(j?.max_tokens) || 2048,
+        temperature: Number(j?.temperature) || 0.85,
+        sourcePreset: 'guest-trial',
+      };
+      stLiveConfigCache = profile;
+      stLiveConfigAt = now;
+      return applyEuReplyMaxTokensToProfile(resolveEuLiveProfileForGeneration({ ...profile }));
+    } catch {
+      return null;
+    }
+  }
   try {
     const res = await stApiPost('/api/settings/get', {});
     if (!res.ok) throw new Error(`settings/get ${res.status}`);
@@ -18217,6 +18262,12 @@ function mergeContinuationReply(baseReply = '', continuationReply = '') {
 }
 
 async function requestAiReplyStream(userText, options = {}, onDelta) {
+  if (isEuGuestMode()) {
+    const reply = await requestAiReply(userText, options);
+    const raw = String(reply?.rawReply || reply?.reply || '').trim();
+    if (raw && typeof onDelta === 'function') onDelta(raw, raw);
+    return { reply: raw, rawReply: raw, streamed: false };
+  }
   const charName = options.charName || 'AI';
   const history = Array.isArray(options.history) ? options.history : [];
   const startedAt = Date.now();
@@ -19518,7 +19569,9 @@ function euMallCatalogImgIsPrivateUserPath(s) {
 async function euFetchMallCapabilities() {
   euMallCapabilitiesLoaded = false;
   try {
-    const res = await stApiRequest('GET', '/api/eu/mall/capabilities', {}, 15000);
+    const res = isEuGuestMode()
+      ? await fetch(normalizeEuFetchUrl('/api/eu/mall/capabilities'), { credentials: 'include' })
+      : await stApiRequest('GET', '/api/eu/mall/capabilities', {}, 15000);
     if (!res.ok) {
       euMallCapabilities = {
         canPublish: false,
@@ -20998,7 +21051,7 @@ function persistAcquiredSet(setObj) {
   localStorage.setItem(storageKey, JSON.stringify(arr));
   euInvalidateAcquiredSetCache();
   euBumpAcquiredStorageGen();
-  scheduleEuMallBrowserStatePush();
+  if (!isEuGuestMode()) scheduleEuMallBrowserStatePush();
 }
 
 /** 用户从故事书库移除已获取条目后立刻上传，避免刷新或登录时云端并集把条目又合并回来。 */

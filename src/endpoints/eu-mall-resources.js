@@ -64,6 +64,14 @@ function assertCanModifyOwnOrMall(req, res, existingOwner) {
 
 export const router = express.Router();
 
+/** 上架/贡献/LLM 批处理等写操作需登录；GET 清单与资源正文在 requireLogin 之前也可给游客读。 */
+function requireMallLogin(req, res, next) {
+    if (!req.user?.profile) {
+        return res.status(401).json({ error: '未登录' });
+    }
+    return next();
+}
+
 const INDEX_KEY = 'eu:mall:index:v1';
 const VERSION = 1;
 const PAGE_SIZE_MAX = 200;
@@ -307,7 +315,7 @@ router.get('/thumbs/:filename', (req, res) => {
     return res.sendFile(fn, { root: THUMB_DIR() });
 });
 
-router.post('/llm-tags/preflight', async (req, res) => {
+router.post('/llm-tags/preflight', requireMallLogin, async (req, res) => {
     if (!requireMallPublisher(req, res)) return;
     const apiKey = readXaiKeyForUser(req.user?.directories);
     if (!apiKey) {
@@ -317,7 +325,7 @@ router.post('/llm-tags/preflight', async (req, res) => {
 });
 
 /** 导入草稿等：仅推断标签，不写磁盘。 */
-router.post('/llm-tags/infer', async (req, res) => {
+router.post('/llm-tags/infer', requireMallLogin, async (req, res) => {
     if (!requireMallPublisher(req, res)) return;
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const raw = body.raw && typeof body.raw === 'object' ? body.raw : body;
@@ -337,7 +345,7 @@ router.post('/llm-tags/infer', async (req, res) => {
 });
 
 /** 公共商城单本：AI 归纳标签并写回 resources JSON + 索引。 */
-router.post('/resource/:id/llm-tags', async (req, res) => {
+router.post('/resource/:id/llm-tags', requireMallLogin, async (req, res) => {
     if (!requireMallPublisher(req, res)) return;
     ensureMallDirs();
     const id = String(req.params.id || '').trim();
@@ -416,7 +424,7 @@ router.post('/resource/:id/llm-tags', async (req, res) => {
 });
 
 /** 公共商城单本：仅 AI 重判成人/全年龄（读正文，不依赖旧 tags 对齐）。 */
-router.post('/resource/:id/llm-adult', async (req, res) => {
+router.post('/resource/:id/llm-adult', requireMallLogin, async (req, res) => {
     if (!requireMallPublisher(req, res)) return;
     ensureMallDirs();
     const id = String(req.params.id || '').trim();
@@ -494,7 +502,7 @@ function needsMallDescRepair(desc) {
 }
 
 /** 批量修复公共商城简介：从 first_mes / HTML 开场白生成 desc，同步索引。 */
-router.post('/repair-descs', async (req, res) => {
+router.post('/repair-descs', requireMallLogin, async (req, res) => {
     if (!requireMallPublisher(req, res)) return;
     ensureMallDirs();
     let scanned = 0;
@@ -546,7 +554,7 @@ function resourceHasNoUsableDesc(payload) {
 }
 
 /** 批量删除公共商城中简介不可用的故事书（默认 storybook）。body.dryRun=true 仅预览。 */
-router.post('/purge-no-desc', async (req, res) => {
+router.post('/purge-no-desc', requireMallLogin, async (req, res) => {
     if (!requireMallPublisher(req, res)) return;
     ensureMallDirs();
     const body = req.body && typeof req.body === 'object' ? req.body : {};
@@ -644,9 +652,6 @@ router.get('/resources', async (req, res) => {
 
 /** 全量元数据索引（无 raw/大图），供前端建资料库查询表，体量随条数线性增长、可支撑数千条。 */
 router.get('/resources/index-meta', async (req, res) => {
-    if (!req.user?.profile) {
-        return res.status(401).json({ error: '未登录' });
-    }
     ensureMallDirs();
     const index = (await readIndex()).map(sanitizeMetaRow).sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt));
     const items = index.map((row) => {
@@ -668,10 +673,7 @@ router.get('/resources/index-meta', async (req, res) => {
 });
 
 /** 导出完整索引（JSON/CSV），便于运营备份与客户侧资料库对接。 */
-router.get('/resources/export', async (req, res) => {
-    if (!req.user?.profile) {
-        return res.status(401).json({ error: '未登录' });
-    }
+router.get('/resources/export', requireMallLogin, async (req, res) => {
     ensureMallDirs();
     const format = String(req.query.format || 'json').toLowerCase();
     const index = (await readIndex()).map(sanitizeMetaRow).sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt));
@@ -725,9 +727,6 @@ router.get('/resources/export', async (req, res) => {
 
 /** 轻量预览：服务端读盘解析 desc + 开场白，不返回整卡 raw（防浏览器 OOM）。 */
 router.get('/resource/:id/preview', async (req, res) => {
-    if (!req.user?.profile) {
-        return res.status(401).json({ error: '未登录' });
-    }
     ensureMallDirs();
     const id = String(req.params.id || '').trim();
     if (!id) return res.status(400).json({ error: 'invalid id' });
@@ -944,7 +943,7 @@ async function updateMallResourcePayloadFromBody(req, body, prev) {
     return { payload, thumb };
 }
 
-router.post('/contribute', async (req, res) => {
+router.post('/contribute', requireMallLogin, async (req, res) => {
     const handle = String(req.user?.profile?.handle || '').trim();
     if (!handle) {
         return res.status(401).json({ error: '未登录' });
@@ -961,7 +960,7 @@ router.post('/contribute', async (req, res) => {
     }
 });
 
-router.put('/contribute/:id', async (req, res) => {
+router.put('/contribute/:id', requireMallLogin, async (req, res) => {
     const handle = String(req.user?.profile?.handle || '').trim();
     if (!handle) {
         return res.status(401).json({ error: '未登录' });
@@ -993,7 +992,7 @@ router.put('/contribute/:id', async (req, res) => {
     }
 });
 
-router.post('/resource', async (req, res) => {
+router.post('/resource', requireMallLogin, async (req, res) => {
     if (!requireMallPublisher(req, res)) return;
     try {
         const { id, thumb } = await createMallResourceFromBody(req, req.body);
@@ -1003,7 +1002,7 @@ router.post('/resource', async (req, res) => {
     }
 });
 
-router.post('/resources/batch', async (req, res) => {
+router.post('/resources/batch', requireMallLogin, async (req, res) => {
     if (!requireMallPublisher(req, res)) return;
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
     if (!items.length) {
@@ -1062,7 +1061,7 @@ router.post('/resources/batch', async (req, res) => {
     return res.json({ ok: true, results, okCount, failCount: items.length - okCount });
 });
 
-router.put('/resource/:id', async (req, res) => {
+router.put('/resource/:id', requireMallLogin, async (req, res) => {
     if (!requireMallPublisher(req, res)) return;
     const id = String(req.params.id || '').trim();
     if (!id) return res.status(400).json({ error: 'invalid id' });
@@ -1085,7 +1084,7 @@ router.put('/resource/:id', async (req, res) => {
     }
 });
 
-router.delete('/resource/:id', async (req, res) => {
+router.delete('/resource/:id', requireMallLogin, async (req, res) => {
     if (!requireMallPublisher(req, res)) return;
     ensureMallDirs();
     const id = String(req.params.id || '').trim();
@@ -1111,7 +1110,7 @@ router.delete('/resource/:id', async (req, res) => {
     return res.json({ ok: true, id });
 });
 
-router.post('/migrate/browser-state', async (req, res) => {
+router.post('/migrate/browser-state', requireMallLogin, async (req, res) => {
     const actor = req.user?.profile;
     if (!actor || (!isEuDevSuperUser(req) && !hasEuRole(actor, EU_ROLES.SUPER_ADMIN))) {
         return res.status(403).json({ error: '需要 super.admin 权限' });

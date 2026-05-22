@@ -67,6 +67,7 @@ import { syncRouter as euSharedApiSyncRouter } from './endpoints/eu-shared-api.j
 import { router as euTiebaRouter } from './endpoints/eu-tieba.js';
 import { router as euBrowserStateRouter } from './endpoints/eu-browser-state.js';
 import { router as euMallResourcesRouter } from './endpoints/eu-mall-resources.js';
+import { router as euGuestTrialRouter } from './endpoints/eu-guest-trial.js';
 import { router as euRbacRoutesRouter } from './endpoints/eu-rbac-routes.js';
 import { router as euDevModeRouter } from './endpoints/eu-dev-mode.js';
 import { skipEuTiebaCsrf } from './endpoints/eu-tieba-api-auth.js';
@@ -258,6 +259,10 @@ app.use(express.static(path.join(serverDirectory, 'public'), {}));
 app.use('/api/users', usersPublicRouter);
 app.use('/api/eu', euAuthRouter);
 app.use('/api/eu/tieba', euTiebaRouter);
+/** 游客可浏览商城清单/详情；写入仍走下方登录后同路径（router 内 requireMallLogin）。 */
+app.use('/api/eu/mall', euMallResourcesRouter);
+/** 游客试用对话（限流，用 config.euSharedApiFromHandle 的 xAI，不落库）。 */
+app.use('/api/eu/guest', euGuestTrialRouter);
 
 // Everything below this line requires authentication
 app.use(requireLoginMiddleware);
@@ -265,8 +270,6 @@ app.use(requireLoginMiddleware);
 app.use('/api/eu/shared-api', euSharedApiSyncRouter);
 /** EU：商城 / 故事书 / EU 个人资料等 localStorage 白名单键按账号同步到 data/<handle>/eu-mall-browser-state.json */
 app.use('/api/eu/browser-state', euBrowserStateRouter);
-/** EU：公共商城资源（RBAC + 公共索引/内容分层） */
-app.use('/api/eu/mall', euMallResourcesRouter);
 app.use('/api/eu/dev', euDevModeRouter);
 app.use('/api/eu/rbac', euRbacRoutesRouter);
 app.post('/api/ping', (request, response) => {
