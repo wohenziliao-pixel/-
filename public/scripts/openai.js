@@ -93,6 +93,7 @@ export {
     IdentifierNotFoundError,
     Message,
     MessageCollection,
+    toggleChatCompletionForms,
 };
 
 let openai_messages_count = 0;
@@ -5826,7 +5827,37 @@ async function testApiConnection() {
     }
 }
 
-function reconnectOpenAi() {
+export function getOpenAIConnectionDefaults() {
+    /** @type {Record<string, *>} */
+    const defaults = {};
+
+    for (const [, [, setting, , isConnection]] of Object.entries(settingsToUpdate)) {
+        if (!isConnection) {
+            continue;
+        }
+
+        const value = default_settings[setting];
+        defaults[setting] = Array.isArray(value) ? [...value] : value;
+    }
+
+    return defaults;
+}
+
+/**
+ * Switch chat completion source without auto-reconnect (for connection profile apply).
+ * @param {string} source
+ */
+export function setChatCompletionSourceQuiet(source) {
+    cancelStatusCheck('Chat Completion source changed');
+    model_list = [];
+    const $select = $('#chat_completion_source');
+    const normalized = String(source).toLowerCase().trim();
+    $select.val(normalized);
+    oai_settings.chat_completion_source = String($select.val() || normalized);
+    $select.trigger('change', { source: 'connection_profile' });
+}
+
+export function reconnectOpenAi() {
     if (main_api == 'openai') {
         setOnlineStatus('no_connection');
         resultCheckStatus();
@@ -6586,13 +6617,15 @@ export function initOpenAI() {
         saveSettingsDebounced();
     });
 
-    $('#chat_completion_source').on('change', function () {
+    $('#chat_completion_source').on('change', function (_event, data) {
         cancelStatusCheck('Chat Completion source changed');
         model_list = [];
         oai_settings.chat_completion_source = String($(this).find(':selected').val());
         toggleChatCompletionForms();
         saveSettingsDebounced();
-        reconnectOpenAi();
+        if (data?.source !== 'connection_profile') {
+            reconnectOpenAi();
+        }
         forceCharacterEditorTokenize();
         updateFeatureSupportFlags();
         eventSource.emit(event_types.CHATCOMPLETION_SOURCE_CHANGED, oai_settings.chat_completion_source);

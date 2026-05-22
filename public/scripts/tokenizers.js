@@ -717,6 +717,11 @@ export function getTokenizerModel() {
         return claudeTokenizer;
     }
 
+    // xAI Grok：无专用 tiktoken；用 deepseek 近似，避免落到 gpt-3.5-turbo 引发分词器请求异常
+    if (oai_settings.chat_completion_source == chat_completion_sources.XAI) {
+        return deepseekTokenizer;
+    }
+
     if (oai_settings.chat_completion_source == chat_completion_sources.MISTRALAI) {
         if (oai_settings.mistralai_model.includes('nemo') || oai_settings.mistralai_model.includes('pixtral')) {
             return nemoTokenizer;
@@ -840,17 +845,26 @@ export async function countTokensOpenAIAsync(messages, full = false) {
         if (typeof cachedCount === 'number') {
             token_count += cachedCount;
         } else {
-            const data = await jQuery.ajax({
-                async: true,
-                type: 'POST', //
-                url: tokenizerEndpoint,
-                data: JSON.stringify([message]),
-                dataType: 'json',
-                contentType: 'application/json',
-            });
+            try {
+                const data = await jQuery.ajax({
+                    async: true,
+                    type: 'POST',
+                    url: tokenizerEndpoint,
+                    data: JSON.stringify([message]),
+                    dataType: 'json',
+                    contentType: 'application/json',
+                });
 
-            token_count += Number(data.token_count);
-            cacheObject[cacheKey] = Number(data.token_count);
+                const count = Number(data.token_count);
+                token_count += count;
+                cacheObject[cacheKey] = count;
+            } catch (err) {
+                const text = typeof message?.content === 'string' ? message.content : JSON.stringify(message);
+                const estimate = guesstimate(text);
+                console.warn('OpenAI tokenizer count failed, using estimate:', err?.status || err?.statusText || err);
+                token_count += estimate;
+                cacheObject[cacheKey] = estimate;
+            }
         }
     }
 

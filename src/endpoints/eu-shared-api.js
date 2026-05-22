@@ -157,7 +157,9 @@ export function applyEuSharedApiProfile(targetDirectories) {
         }
     }
 
-    if (hasXaiSecretInRoot(tgtRoot)) {
+    // 模板账号若已用 OpenRouter（如「文风转换-现代文」），勿再强制改回 xAI，否则新注册用户无法沿用同一套 API。
+    const srcChatSource = String(srcJ?.oai_settings?.chat_completion_source || '').trim().toLowerCase();
+    if (hasXaiSecretInRoot(tgtRoot) && srcChatSource !== 'openrouter') {
         forceXaiOaiSettings(tgtRoot, srcJ?.oai_settings);
     }
 

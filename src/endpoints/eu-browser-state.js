@@ -1,6 +1,7 @@
 /**
- * EU 商城 / 故事书相关浏览器状态：按酒馆登录用户落盘到 DATA_ROOT/<handle>/eu-mall-browser-state.json，
- * 便于换设备或部署到线上后同一账号自动拉取（与 eu-demo localStorage 中 eu_demo_dev_items / 已获取列表 / 个人资料 JSON 等对应）。
+ * EU 账号云快照：按酒馆登录用户落盘到 DATA_ROOT/<handle>/eu-mall-browser-state.json。
+ * 仅同步「已获取索引 / 个人资料 / 上传索引」等轻量键；故事书正文在 data/eu-public/mall；
+ * 对话三键走 POST/GET /conversations；贴吧独立 data/eu-tieba-board.json。
  */
 import express from 'express';
 import fs from 'node:fs';
@@ -17,26 +18,44 @@ const jsonBody = express.json({ limit: '48mb' });
  * @param {string} key
  * @returns {boolean}
  */
-function isAllowedKey(handle, key) {
-    const h = String(handle || '').trim();
+/** @param {string} key */
+function isDeprecatedBrowserStateKey(key) {
     const k = String(key || '').trim();
-    if (!h || !k) {
+    if (!k) {
         return false;
     }
     if (
         k === 'eu_demo_dev_items' ||
         k === 'eu_demo_dev_heavy' ||
         k === 'eu_demo_dev_items_manifest' ||
-        k === 'eu_demo_dev_items_storybook' ||
-        k === 'eu_demo_dev_items_setting' ||
-        k === 'eu_demo_dev_items_character'
+        k === 'eu_demo_dev_public_overflow_v1'
     ) {
         return true;
+    }
+    if (k.startsWith('eu_demo_dev_items_')) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * @param {string} handle
+ * @param {string} key
+ * @returns {boolean}
+ */
+function isAllowedKey(handle, key) {
+    const h = String(handle || '').trim();
+    const k = String(key || '').trim();
+    if (!h || !k || isDeprecatedBrowserStateKey(k)) {
+        return false;
     }
     if (k === `eu_demo_acquired_items_${h}`) {
         return true;
     }
     if (k === `eu_demo_acquired_meta_v1_${h}`) {
+        return true;
+    }
+    if (k === `eu_demo_acquired_gen_${h}`) {
         return true;
     }
     if (k === `eu_demo_mall_hidden_uids_${h}`) {
@@ -45,16 +64,24 @@ function isAllowedKey(handle, key) {
     if (k === `eu_demo_account_profile_${h}`) {
         return true;
     }
-    if (k === `eu_demo_conversations_${h}`) {
-        return true;
-    }
-    if (k === `eu_demo_character_sessions_${h}`) {
-        return true;
-    }
-    if (k === `eu_demo_last_chat_resume_${h}`) {
+    if (k === `eu_demo_upload_index_${h}`) {
         return true;
     }
     return false;
+}
+
+/**
+ * @param {Record<string, string>} items
+ */
+function purgeDeprecatedBrowserStateKeys(items) {
+    if (!items || typeof items !== 'object') {
+        return;
+    }
+    for (const key of Object.keys(items)) {
+        if (isDeprecatedBrowserStateKey(key)) {
+            delete items[key];
+        }
+    }
 }
 
 /** @param {string} key @param {string} val */
@@ -200,6 +227,22 @@ function shouldRejectIncomingConversationKey(handle, existingItems, incoming, ke
         return false;
     }
     if (k.includes('eu_demo_conversations_') && isEmptyConversationStoreJson(incoming[k])) {
+        const existingConv = existingItems[k];
+        if (!isEmptyConversationStoreJson(existingConv)) {
+            const resumeKey = `eu_demo_last_chat_resume_${h}`;
+            const incomingResume = incoming[resumeKey];
+            if (typeof incomingResume === 'string' && incomingResume.length > 4) {
+                try {
+                    const inCleared = Number(JSON.parse(incomingResume)?.clearedAt) || 0;
+                    if (inCleared > 0) {
+                        return false;
+                    }
+                } catch {
+                    /* ignore */
+                }
+            }
+            return true;
+        }
         return false;
     }
     const cleared = resumeClearedAtFromItems(existingItems, h);
@@ -356,6 +399,7 @@ router.post('/', jsonBody, (req, res) => {
             merged.items[key] = val;
             savedKeys.push(key);
         }
+        purgeDeprecatedBrowserStateKeys(merged.items);
         merged.updatedAt = Date.now();
         writeFileAtomicSync(fp, JSON.stringify(merged), 'utf8');
         return res.json({ ok: true, updatedAt: merged.updatedAt, savedKeys, skippedKeys });

@@ -41,6 +41,27 @@ function assertCanModifyMallResource(req, res, _existingOwner) {
     return false;
 }
 
+/** 贡献者本人可改元数据；商城管理者仍可改任意公共资源。 */
+function assertCanModifyOwnOrMall(req, res, existingOwner) {
+    const actor = req.user?.profile;
+    const actorHandle = String(actor?.handle || '').trim();
+    if (!actor || !actorHandle) {
+        res.status(401).json({ error: '未登录' });
+        return false;
+    }
+    if (isEuDevSuperUser(req)) {
+        return true;
+    }
+    if (hasAnyEuRole(actor, [EU_ROLES.SUPER_ADMIN, EU_ROLES.MALL_PUBLISHER])) {
+        return true;
+    }
+    if (String(existingOwner || '').trim() === actorHandle) {
+        return true;
+    }
+    res.status(403).json({ error: '仅可修改本人贡献的资源' });
+    return false;
+}
+
 export const router = express.Router();
 
 const INDEX_KEY = 'eu:mall:index:v1';
@@ -264,8 +285,10 @@ router.get('/capabilities', (req, res) => {
     const user = req.user?.profile;
     const view = euRoleViewForRequest(req);
     const devSuper = isEuDevSuperUser(req);
+    const loggedIn = Boolean(String(view.handle || '').trim());
     return res.json({
         canPublish: devSuper || hasAnyEuRole(user, [EU_ROLES.MALL_PUBLISHER, EU_ROLES.SUPER_ADMIN]),
+        canContribute: loggedIn,
         canModerateTieba: devSuper || hasAnyEuRole(user, [EU_ROLES.TIEBA_MODERATOR, EU_ROLES.SUPER_ADMIN]),
         isSuperAdmin: devSuper || hasEuRole(user, EU_ROLES.SUPER_ADMIN),
         isDevMode: devSuper,
@@ -797,7 +820,7 @@ router.get('/resource/:id', async (req, res) => {
  * 创建一条商城资源（与 POST /resource 行为一致）。
  * @returns {Promise<{ id: string, thumb: string | null }>}
  */
-async function createMallResourceFromBody(req, body) {
+async function createMallResourceFromBody(req, body, opts = {}) {
     ensureMallDirs();
     const b = body && typeof body === 'object' ? body : {};
     const now = Date.now();
@@ -815,6 +838,7 @@ async function createMallResourceFromBody(req, body) {
     const tags = normalizeTags(b.tags);
     const owner = String(req.user?.profile?.handle || '').trim() || 'unknown';
     const adultContent = b.adultContent === true;
+    const source = opts.source === 'contributed' ? 'contributed' : 'public';
     const payload = {
         id,
         uid: `public-${id}`,
@@ -829,7 +853,7 @@ async function createMallResourceFromBody(req, body) {
         raw: b.raw && typeof b.raw === 'object' ? b.raw : null,
         img: typeof b.img === 'string' ? b.img : null,
         adultContent,
-        source: 'public',
+        source,
         owner,
         updatedAt: now,
         createdAt: Number(b.createdAt) || now,
@@ -848,9 +872,126 @@ async function createMallResourceFromBody(req, body) {
     const index = (await readIndex()).filter((x) => String(x.id || '').trim() !== id);
     index.push(sanitizeMetaRow({ id, type, title, desc, tags, thumb, adultContent, owner, updatedAt: now, createdAt: payload.createdAt, version: VERSION }));
     await writeIndex(index);
-    appendEuAuditLog(owner, 'mall_resource_create', { id, title, type });
-    return { id, thumb };
+    const auditAction = source === 'contributed' ? 'mall_resource_contribute' : 'mall_resource_create';
+    appendEuAuditLog(owner, auditAction, { id, title, type, source });
+    return { id, thumb, uid: `public-${id}` };
 }
+
+/**
+ * 将故事书 payload 写入公共目录（任意登录用户；正文不进个人 browser-state）。
+ * @param {import('express').Request} req
+ * @param {Record<string, unknown>} body
+ * @param {Record<string, unknown>} prev
+ * @returns {Promise<{ payload: Record<string, unknown>, thumb: string | null }>}
+ */
+async function updateMallResourcePayloadFromBody(req, body, prev) {
+    ensureMallDirs();
+    const id = String(prev.id || '').trim();
+    const now = Date.now();
+    const type = normalizeType(body.type || prev.type);
+    const prevIndexRow = (await readIndex()).find((x) => String(x.id || '').trim() === id);
+    const payload = {
+        ...prev,
+        id,
+        uid: `public-${id}`,
+        type,
+        resourceType: type,
+        title: String(body.title ?? prev.title ?? '').trim(),
+        desc: String(body.desc ?? prev.desc ?? '').trim(),
+        tags: normalizeTags(body.tags ?? prev.tags),
+        catalog: Array.isArray(body.catalog) ? body.catalog : (Array.isArray(prev.catalog) ? prev.catalog : []),
+        regexRules: Array.isArray(body.regexRules) ? body.regexRules : (Array.isArray(prev.regexRules) ? prev.regexRules : []),
+        first_mes: typeof body.first_mes === 'string' ? body.first_mes : String(prev.first_mes || ''),
+        raw: body.raw && typeof body.raw === 'object' ? body.raw : (prev.raw && typeof prev.raw === 'object' ? prev.raw : null),
+        img: typeof body.img === 'string' ? body.img : (typeof prev.img === 'string' ? prev.img : null),
+        adultContent: Object.prototype.hasOwnProperty.call(body, 'adultContent')
+            ? body.adultContent === true
+            : prev.adultContent === true,
+        source: String(prev.source || 'public'),
+        owner: String(prev.owner || req.user?.profile?.handle || 'unknown'),
+        updatedAt: now,
+        createdAt: Number(prev.createdAt) || now,
+        version: VERSION,
+    };
+    let thumb = null;
+    try {
+        thumb = await maybePersistThumb(payload.img, id, req);
+    } catch {
+        thumb = null;
+    }
+    if (!thumb && prevIndexRow && typeof prevIndexRow.thumb === 'string' && prevIndexRow.thumb.trim()) {
+        thumb = prevIndexRow.thumb.trim();
+    }
+    if (thumb) {
+        payload.img = thumb;
+    }
+    writeFileAtomicSync(resourceFile(id), JSON.stringify(payload), 'utf8');
+    const index = (await readIndex()).filter((x) => String(x.id || '').trim() !== id);
+    index.push(sanitizeMetaRow({
+        id,
+        type: payload.type,
+        title: payload.title,
+        desc: payload.desc,
+        tags: payload.tags,
+        thumb,
+        adultContent: payload.adultContent,
+        owner: payload.owner,
+        updatedAt: payload.updatedAt,
+        createdAt: payload.createdAt,
+        version: VERSION,
+    }));
+    await writeIndex(index);
+    return { payload, thumb };
+}
+
+router.post('/contribute', async (req, res) => {
+    const handle = String(req.user?.profile?.handle || '').trim();
+    if (!handle) {
+        return res.status(401).json({ error: '未登录' });
+    }
+    try {
+        const type = normalizeType(req.body?.type);
+        if (type !== 'storybook') {
+            return res.status(400).json({ error: '仅支持故事书贡献到公共库' });
+        }
+        const { id, thumb, uid } = await createMallResourceFromBody(req, req.body, { source: 'contributed' });
+        return res.json({ ok: true, id, thumb, uid });
+    } catch (e) {
+        return res.status(400).json({ error: e?.message || 'contribute failed' });
+    }
+});
+
+router.put('/contribute/:id', async (req, res) => {
+    const handle = String(req.user?.profile?.handle || '').trim();
+    if (!handle) {
+        return res.status(401).json({ error: '未登录' });
+    }
+    const id = String(req.params.id || '').trim();
+    if (!id) {
+        return res.status(400).json({ error: 'invalid id' });
+    }
+    const fp = resourceFile(id);
+    if (!fs.existsSync(fp)) {
+        return res.status(404).json({ error: 'not found' });
+    }
+    let prev = {};
+    try {
+        prev = JSON.parse(fs.readFileSync(fp, 'utf8'));
+    } catch {
+        prev = {};
+    }
+    if (!assertCanModifyOwnOrMall(req, res, String(prev.owner || '').trim())) {
+        return;
+    }
+    try {
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        const { thumb } = await updateMallResourcePayloadFromBody(req, body, prev);
+        appendEuAuditLog(handle, 'mall_resource_contribute_update', { id });
+        return res.json({ ok: true, id, thumb, uid: `public-${id}` });
+    } catch (e) {
+        return res.status(400).json({ error: e?.message || 'contribute update failed' });
+    }
+});
 
 router.post('/resource', async (req, res) => {
     if (!requireMallPublisher(req, res)) return;
@@ -923,7 +1064,6 @@ router.post('/resources/batch', async (req, res) => {
 
 router.put('/resource/:id', async (req, res) => {
     if (!requireMallPublisher(req, res)) return;
-    ensureMallDirs();
     const id = String(req.params.id || '').trim();
     if (!id) return res.status(400).json({ error: 'invalid id' });
     const fp = resourceFile(id);
@@ -936,62 +1076,13 @@ router.put('/resource/:id', async (req, res) => {
     }
     if (!assertCanModifyMallResource(req, res, String(prev.owner || '').trim())) return;
     const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const now = Date.now();
-    const type = normalizeType(body.type || prev.type);
-    const prevIndexRow = (await readIndex()).find((x) => String(x.id || '').trim() === id);
-    const payload = {
-        ...prev,
-        id,
-        uid: `public-${id}`,
-        type,
-        resourceType: type,
-        title: String(body.title ?? prev.title ?? '').trim(),
-        desc: String(body.desc ?? prev.desc ?? '').trim(),
-        tags: normalizeTags(body.tags ?? prev.tags),
-        catalog: Array.isArray(body.catalog) ? body.catalog : (Array.isArray(prev.catalog) ? prev.catalog : []),
-        regexRules: Array.isArray(body.regexRules) ? body.regexRules : (Array.isArray(prev.regexRules) ? prev.regexRules : []),
-        first_mes: typeof body.first_mes === 'string' ? body.first_mes : String(prev.first_mes || ''),
-        raw: body.raw && typeof body.raw === 'object' ? body.raw : (prev.raw && typeof prev.raw === 'object' ? prev.raw : null),
-        img: typeof body.img === 'string' ? body.img : (typeof prev.img === 'string' ? prev.img : null),
-        adultContent: Object.prototype.hasOwnProperty.call(body, 'adultContent')
-            ? body.adultContent === true
-            : prev.adultContent === true,
-        source: 'public',
-        owner: String(prev.owner || req.user?.profile?.handle || 'unknown'),
-        updatedAt: now,
-        createdAt: Number(prev.createdAt) || now,
-        version: VERSION,
-    };
-    let thumb = null;
     try {
-        thumb = await maybePersistThumb(payload.img, id, req);
-    } catch {
-        thumb = null;
+        const { thumb } = await updateMallResourcePayloadFromBody(req, { ...body, source: 'public' }, { ...prev, source: 'public' });
+        appendEuAuditLog(req.user?.profile?.handle, 'mall_resource_update', { id });
+        return res.json({ ok: true, id, thumb });
+    } catch (e) {
+        return res.status(400).json({ error: e?.message || 'update failed' });
     }
-    if (!thumb && prevIndexRow && typeof prevIndexRow.thumb === 'string' && prevIndexRow.thumb.trim()) {
-        thumb = prevIndexRow.thumb.trim();
-    }
-    if (thumb) {
-        payload.img = thumb;
-    }
-    writeFileAtomicSync(fp, JSON.stringify(payload), 'utf8');
-    const index = (await readIndex()).filter((x) => String(x.id || '').trim() !== id);
-    index.push(sanitizeMetaRow({
-        id,
-        type: payload.type,
-        title: payload.title,
-        desc: payload.desc,
-        tags: payload.tags,
-        thumb,
-        adultContent: payload.adultContent,
-        owner: payload.owner,
-        updatedAt: payload.updatedAt,
-        createdAt: payload.createdAt,
-        version: VERSION,
-    }));
-    await writeIndex(index);
-    appendEuAuditLog(req.user?.profile?.handle, 'mall_resource_update', { id });
-    return res.json({ ok: true, id, thumb });
 });
 
 router.delete('/resource/:id', async (req, res) => {
