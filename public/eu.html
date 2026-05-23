@@ -1175,9 +1175,23 @@ body.eu-page-chatroom .main-content {
     display: none !important;
   }
   .chat-ai-assist-panel {
-    width: min(420px, calc(100vw - 24px));
+    position: fixed;
     left: 12px;
     right: 12px;
+    width: auto;
+    max-width: none;
+    bottom: calc(var(--eu-bottom-input-pad, 88px) + 6px);
+    max-height: min(46vh, 360px);
+    overflow: hidden;
+    display: none;
+    flex-direction: column;
+    z-index: 200;
+  }
+  .chat-ai-assist-panel.open {
+    display: flex;
+  }
+  .chat-ai-assist-list {
+    max-height: min(38vh, 280px);
   }
   .account-profile-wrap {
     padding: 0 0 40px;
@@ -2161,17 +2175,27 @@ body.eu-page-chatroom .main-content {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: min(42vh, 320px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .chat-ai-assist-draft {
   width: 100%;
+  max-width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 9px 10px;
+  padding: 10px 12px;
   background: var(--panel-soft);
   color: var(--text);
   text-align: left;
   cursor: pointer;
-  line-height: 1.4;
+  line-height: 1.55;
+  white-space: normal;
+  word-break: break-word;
+  writing-mode: horizontal-tb;
+  font-size: 0.88rem;
+  font-weight: 500;
+  box-sizing: border-box;
 }
 .chat-ai-assist-draft:hover {
   border-color: var(--primary);
@@ -2180,6 +2204,9 @@ body.eu-page-chatroom .main-content {
   color: var(--muted);
   font-size: 0.82rem;
   padding: 6px 2px;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-word;
 }
 .chat-author-rule-panel {
   position: absolute;
@@ -4628,7 +4655,7 @@ label.eu-add-character-pick input {
     <button type="button" class="topbar-quick-btn topbar-quick-btn--qq" onclick="joinQQGroup()" title="QQ交流群">
       <img class="topbar-quick-qq-icon" src="images/eu-qq-group-icon.png" alt="" width="18" height="18" decoding="async" loading="lazy">
     </button>
-    <button id="all-ages-toggle-btn" class="all-ages-toggle" type="button" onclick="toggleAllAgesMode()">全年龄模式</button>
+    <button id="all-ages-toggle-btn" class="all-ages-toggle" type="button" onclick="toggleAllAgesMode()">全年龄</button>
     <div class="user-dropdown" data-eu-user-drop id="user-dropdown">
       <button class="user-dropbtn" type="button" onclick="event.stopPropagation(); toggleUserDropdown(this);" aria-expanded="false" aria-haspopup="true" id="topbar-user-dropbtn">
         <span class="user-drop-name" id="topbar-username">用户</span>
@@ -5760,7 +5787,7 @@ label.eu-add-character-pick input {
       <button class="modal-close" onclick="hideModal('writing-style-modal')">✕</button>
     </div>
     <div class="modal-body">
-      <p class="chat-author-rule-hint" style="margin:0 0 12px;font-size:0.85rem;opacity:0.9;line-height:1.5;">仅对<strong>当前故事书</strong>生效，切换文风会调整叙事语气。与「新增规则」「字符控制」可同时使用。</p>
+      <p class="chat-author-rule-hint" style="margin:0 0 12px;font-size:0.85rem;opacity:0.9;line-height:1.5;">仅对<strong>当前故事书</strong>生效。<strong>默认全年龄叙述</strong>；每条右侧钮可<strong>主动开启含18+</strong>。右上角「全年龄」控制商城/列表是否显示成人向书目，与下文风叙述尺度可分别设置。</p>
       <div id="writing-style-list" class="writing-style-list"></div>
     </div>
   </div>
@@ -5879,6 +5906,7 @@ const state = {
   stCsrfToken: '',
   worldChatAutoFollow: true,
   aiAssistDrafts: [],
+  aiAssistRunning: false,
   activeGlobalSettingUids: [],
   storybookScopedSettingUids: [],
   devModeEnabled: false,
@@ -7166,17 +7194,17 @@ function normalizeWritingStyleAdultMap(raw) {
   const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const out = {};
   for (const p of EU_WRITING_STYLE_PRESETS) {
-    out[p.id] = o[p.id] !== false;
+    out[p.id] = o[p.id] === true;
   }
   return out;
 }
 
-/** true=18+ 完整 System；false=全年龄（仅 SFW 文风倾向）。默认 18+。 */
+/** true=用户主动开启含18+（完整 System）；false/未设=全年龄（SFW）。默认全年龄。 */
 function isWritingStyleAdultEnabled(styleId, conv = null) {
   const id = normalizeWritingStyleId(styleId);
   const key = getStoryRuleBookKey(conv);
   const map = normalizeWritingStyleAdultMap(readStorybookMetaBundle(key).writingStyleAdult);
-  return map[id] !== false;
+  return map[id] === true;
 }
 
 function setWritingStyleAdultEnabled(styleId, enabled, conv = null) {
@@ -7185,7 +7213,7 @@ function setWritingStyleAdultEnabled(styleId, enabled, conv = null) {
   const id = normalizeWritingStyleId(styleId);
   const b = readStorybookMetaBundle(key);
   const map = normalizeWritingStyleAdultMap(b.writingStyleAdult);
-  map[id] = enabled !== false;
+  map[id] = enabled === true;
   b.writingStyleAdult = map;
   writeStorybookMetaBundle(key, b);
   const c = conv || (typeof getActiveConversation === 'function' ? getActiveConversation() : null);
@@ -7215,9 +7243,10 @@ function toggleWritingStyleAdultMode(styleId, ev) {
   const nextAdult = !isWritingStyleAdultEnabled(id);
   setWritingStyleAdultEnabled(id, nextAdult);
   renderWritingStyleModalList();
-  if (id === getWritingStyleForGeneration()) {
-    showToast(nextAdult ? `${getWritingStylePreset(id).label}：18+ 叙述` : `${getWritingStylePreset(id).label}：全年龄叙述`, 'success');
-  }
+  showToast(
+    nextAdult ? `${getWritingStylePreset(id).label}：含18+ 叙述` : `${getWritingStylePreset(id).label}：全年龄叙述`,
+    'success',
+  );
 }
 
 /** 后台强命令 System Prompt（按文风 id；不暴露给终端用户）。 */
@@ -7340,26 +7369,15 @@ function renderWritingStyleModalList() {
   const list = document.getElementById('writing-style-list');
   if (!list) return;
   const active = getWritingStyleForGeneration();
-  const showApi = euCanShowWritingStyleApiDetails();
   list.innerHTML = EU_WRITING_STYLE_PRESETS.map((p) => {
     const activeCls = p.id === active ? ' active' : '';
-    const src = String(p.stChatSource || '').trim();
-    const model = String(p.stModel || '').trim();
-    let apiHint = '';
-    if (showApi) {
-      const tavern = String(p.stTavernConnName || '').trim();
-      const tavernTag = tavern ? ` · 酒馆[${tavern}]` : '';
-      apiHint =
-        src && model
-          ? ` · API ${src}/${model}${tavernTag}`
-          : ' · API：未配置（走账号默认）';
-    }
+    const apiHint = '';
     const adultOn = isWritingStyleAdultEnabled(p.id);
     const toggleCls = adultOn ? ' off' : '';
     const toggleLabel = adultOn ? '含18+' : '全年龄';
     const toggleTitle = adultOn
-      ? '当前为 18+：使用完整文风 System 指令（含成人向描写）'
-      : '当前为全年龄：仅基础文风倾向，不含露骨色情 System 指令';
+      ? '已开启含18+：使用完整文风指令（需主动开启）'
+      : '当前为全年龄（默认）：仅基础文风，不含露骨描写';
     return `<div class="writing-style-option-row${activeCls}" data-writing-style-id="${escapeHtml(p.id)}" role="button" tabindex="0" onclick="selectWritingStyle('${escapeHtml(p.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectWritingStyle('${escapeHtml(p.id)}');}">
       <div class="writing-style-option-body">
         <span class="writing-style-option-title">${escapeHtml(p.label)}</span>
@@ -7391,12 +7409,8 @@ function selectWritingStyle(styleId) {
   renderWritingStyleModalList();
   hideModal('writing-style-modal');
   const preset = getWritingStylePreset(getWritingStyleForGeneration());
-  let toastMsg = `文风：${preset.label}`;
-  if (euCanShowWritingStyleApiDetails()) {
-    const route = getWritingStyleApiRoute();
-    toastMsg += route ? ` · API ${euFormatWritingStyleApiShort(route)}` : ' · API：账号默认';
-  }
-  showToast(toastMsg, 'success');
+  const adultNote = isWritingStyleAdultEnabled(preset.id) ? '含18+ 叙述' : '全年龄叙述（默认）';
+  showToast(`文风：${preset.label} · ${adultNote}`, 'success');
 }
 
 /** 控制台核对五条文风与 API：dumpEuWritingStyleApiAudit() */
@@ -8307,11 +8321,11 @@ function updateAllAgesToggleUi() {
     if (btn.classList.contains('all-ages-toggle--compact')) {
       btn.textContent = state.allAgesMode ? '全年龄' : '含18+';
     } else {
-      btn.textContent = state.allAgesMode ? '全年龄模式' : '全年龄模式（关闭）';
+      btn.textContent = state.allAgesMode ? '全年龄' : '含18+';
     }
     btn.title = state.allAgesMode
-      ? '已开启：隐藏 adultContent=true 或带 18+/成人内容 标签的条目（18+ 角标=成人向）'
-      : '已关闭：显示全部条目含 18+';
+      ? '默认：商城/列表隐藏成人向书目（18+ 角标=成人向）。文风叙述默认亦为全年龄，可在文风转换中按档开启含18+。'
+      : '已主动开启：商城/列表显示成人向书目。故事叙述含18+仍须在文风转换里按档单独开启。';
   });
 }
 
@@ -8320,7 +8334,12 @@ function toggleAllAgesMode() {
   persistAllAgesMode();
   updateAllAgesToggleUi();
   refreshLinkedViews();
-  showToast(state.allAgesMode ? '全年龄模式已开启（成人内容已隐藏）' : '全年龄模式已关闭（成人内容可见）', 'success');
+  showToast(
+    state.allAgesMode
+      ? '全年龄（默认）：商城已隐藏成人向书目'
+      : '含18+：商城可浏览成人向书目（文风叙述须在文风转换中按档开启）',
+    'success',
+  );
 }
 
 function buildConversationKey(charName) {
@@ -10566,6 +10585,103 @@ function euSanitizeStorybookOpeningText(text) {
   return raw;
 }
 
+const euOpeningZhCache = new Map();
+
+function euHashOpeningCacheKey(text) {
+  let h = 2166136261;
+  const s = String(text || '').slice(0, 5000);
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return `opzh_${(h >>> 0).toString(36)}`;
+}
+
+/** 去掉开场白里的英文系统说明/纯英文段（不调用模型）。 */
+function euStripEnglishFromOpening(text) {
+  let s = String(text || '').trim();
+  if (!s) return '';
+  s = euStripDisplayMetaBlocks(s);
+  s = euUnwrapOrDropXmlTagBlocks(s, ['game', 'content', 'response']);
+  s = s
+    .split(/\r?\n/)
+    .filter((line) => !euIsEnglishInstructionLine(line) && !euIsChineseInstructionLine(line))
+    .join('\n');
+  const paras = s.split(/\n{2,}/);
+  const kept = [];
+  for (const p of paras) {
+    const t = p.trim();
+    if (!t) continue;
+    const cjk = euCountCjkChars(t);
+    const lat = euCountLatinLetters(t);
+    if (lat >= 18 && lat > cjk * 2.5) continue;
+    kept.push(t);
+  }
+  return kept.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function euOpeningNeedsZhLocalization(text) {
+  const s = String(text || '').trim();
+  if (!s) return false;
+  const cjk = euCountCjkChars(s);
+  const lat = euCountLatinLetters(s);
+  if (cjk >= 28 && lat < cjk * 0.5) return false;
+  if (lat >= 14 && lat >= cjk) return true;
+  if (lat >= 32 && cjk < 16) return true;
+  return false;
+}
+
+async function euTranslateOpeningToZhViaModel(srcText) {
+  if (isEuGuestMode()) return '';
+  const src = String(srcText || '').trim().slice(0, 3600);
+  if (!src) return '';
+  await euActivateCustomSecretForWritingStyle('modern', { strict: false });
+  let liveProfile = await fetchStLiveGenerationProfile({ allowStale: true });
+  if (!liveProfile) return '';
+  const preset = getWritingStylePreset('modern');
+  liveProfile = applyEuTavernConnProfileToLive({ ...liveProfile }, preset);
+  const messages = normalizeStMessageOrder([
+    {
+      role: 'system',
+      content:
+        '你是专业中译编辑。将角色卡「开场白」译为自然流畅的简体中文小说段落。保留 {{user}}、{{char}}、<user> 等占位符；删除英文系统说明、JSON、代码与 URL。只输出译文正文，不要标题、不要解释。',
+    },
+    { role: 'user', content: src },
+  ]);
+  const chatSrc = String(liveProfile.chat_completion_source || preset.stChatSource || '').toLowerCase();
+  let safeMsgs = euPrepareMessagesForGenerate(messages, chatSrc);
+  let stPayload = euSanitizeStPayloadForBackendSource(
+    normalizeSeedForPayload(
+      normalizeXaiModelForPayload(buildStGeneratePayload(safeMsgs, null, '开场白', liveProfile)),
+    ),
+  );
+  stPayload.max_tokens = Math.min(1200, Math.max(256, Number(stPayload.max_tokens) || 512));
+  stPayload.temperature = Math.min(0.75, Number(stPayload.temperature ?? 0.55));
+  const raw = await euStGenerateOnceForAssist(stPayload, 45000);
+  return String(raw || '').trim();
+}
+
+/** 开场白以中文展示：先剥英文块，仍偏英文则走模型翻译并缓存。 */
+async function euEnsureStorybookOpeningZh(text, opts = {}) {
+  let s = euStripEnglishFromOpening(euSanitizeStorybookOpeningText(text));
+  if (!s) return '';
+  if (!euOpeningNeedsZhLocalization(s)) return s;
+  const cacheKey = `${opts.uid || ''}:${euHashOpeningCacheKey(s)}`;
+  if (euOpeningZhCache.has(cacheKey)) return euOpeningZhCache.get(cacheKey);
+  try {
+    const zh = await euTranslateOpeningToZhViaModel(s);
+    let cleaned = euSanitizeStorybookOpeningText(zh);
+    cleaned = euStripEnglishFromOpening(cleaned) || cleaned;
+    if (cleaned && euCountCjkChars(cleaned) >= 8) {
+      euOpeningZhCache.set(cacheKey, cleaned);
+      return cleaned;
+    }
+  } catch (e) {
+    console.warn('[EU] opening zh translate', e?.message || e);
+  }
+  return s;
+}
+
 function euIsUnusableStorybookOpening(text) {
   const s = String(text || '').trim();
   if (!s) return true;
@@ -10583,7 +10699,8 @@ function euSanitizeMessageContentForDisplay(msg) {
     if (raw === EU_STORYBOOK_START_KICKOFF && msg?.euStartKickoff) return '';
     return raw;
   }
-  const opening = euSanitizeStorybookOpeningText(raw);
+  let opening = euSanitizeStorybookOpeningText(raw);
+  opening = euStripEnglishFromOpening(opening) || opening;
   if (!opening || euIsUnusableStorybookOpening(opening)) return '';
   return opening;
 }
@@ -10776,14 +10893,19 @@ async function euResolveStorybookOpeningForChat(uid, book = null) {
       }
     }
     if (greet && !euIsDefaultStorybookGreeting(greet) && !euIsStubStorybookOpening(greet)) {
-      euPublicOpeningCache.set(u, greet);
-      return greet;
+      const zh = await euEnsureStorybookOpeningZh(greet, { uid: u });
+      euPublicOpeningCache.set(u, zh);
+      return zh;
     }
     return '';
   }
   const localGreet = String(getStorybookGreeting(mergedBook) || '').trim();
-  if (localGreet && !euIsDefaultStorybookGreeting(localGreet)) euPublicOpeningCache.set(u, localGreet);
-  return localGreet;
+  if (localGreet && !euIsDefaultStorybookGreeting(localGreet)) {
+    const zh = await euEnsureStorybookOpeningZh(localGreet, { uid: u });
+    euPublicOpeningCache.set(u, zh);
+    return zh;
+  }
+  return '';
 }
 
 async function euPeekDevRowOpeningText(row) {
@@ -11075,6 +11197,9 @@ async function openWorldChat(charName, opts = {}) {
       linkedBook?.title || charName.replace(/^故事书[·\-]/, '').replace(/^虚拟恋人[·\-]/, '') || '',
     ).trim() || '角色';
     resolvedGreeting = euSanitizeStorybookOpeningText(resolvedGreeting);
+    if (resolvedGreeting && !virtualLoverMode) {
+      resolvedGreeting = await euEnsureStorybookOpeningZh(resolvedGreeting, { uid: uidForOpen });
+    }
     const isStorybookChat =
       !virtualLoverMode &&
       (Boolean(conv?.metadata?.storybookUid) || /^故事书[·\-]/.test(String(charName || '')));
@@ -15748,8 +15873,8 @@ function dismissDevBulkDeleteToast() {}
         <button class="chat-tools-item" type="button" data-eu-action="continue" onclick="handleWorldChatContinue(event)"><span class="icon">➤</span><span>续写</span></button>
       </div>
       <div id="chat-ai-assist-panel" class="chat-ai-assist-panel" aria-hidden="true">
-        <div class="chat-ai-assist-title">AI帮答：点击草稿可填入输入框（不自动发送）</div>
-        <div id="chat-ai-assist-body" class="chat-ai-assist-hint">点击左侧 💡 生成草稿，点草稿填入输入框（不自动发送）</div>
+        <div class="chat-ai-assist-title">AI帮答：五档文风随机抽三档，各生成一条用户台词（点草稿填入，不发送）</div>
+        <div id="chat-ai-assist-body" class="chat-ai-assist-hint">点击左侧 💡 生成草稿</div>
       </div>
       <div id="eu-generation-status" class="eu-generation-status" aria-live="polite" aria-hidden="true"></div>
       <textarea id="assistant-input" placeholder="输入消息…（Enter 发送，Shift+Enter 换行）" onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendMessage();}"></textarea>
@@ -15915,8 +16040,81 @@ function closeAiAssistPanel() {
   trigger?.classList.remove('active');
 }
 
+const EU_AI_ASSIST_STYLE_HINT = Object.freeze({
+  modern: '克制确认、短句利落',
+  literary: '含蓄文艺、略带意象',
+  gentle: '温柔体贴、安抚情绪',
+  creative: '轻快俏皮、带一点新意',
+  explicit: '直白推进、张力更强',
+});
+
+function euPickRandomWritingStylePresets(count = 3) {
+  const pool = [...EU_WRITING_STYLE_PRESETS];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, Math.min(Math.max(1, count), pool.length));
+}
+
+function buildAiAssistMessages(ctx, preset) {
+  const styleHint = EU_AI_ASSIST_STYLE_HINT[preset?.id] || '自然对话';
+  const history = (Array.isArray(ctx?.history) ? ctx.history : [])
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant'))
+    .slice(-10)
+    .map((m) => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: String(m.content || '').slice(0, 420),
+    }));
+  const system = [
+    '你是「用户代答」助手：只为用户草拟下一句要在聊天里发送的中文台词。',
+    '硬性要求：只输出一条台词；28～72 字；自然口语；可含轻微动作/神态；禁止英文、JSON、编号、解释、代码块、世界书原文照抄。',
+    `语气参考「${preset?.label || '现代风'}」：${styleHint}。`,
+    '不要写文风名称，不要复述系统设定。',
+  ].join('\n');
+  return normalizeStMessageOrder([
+    { role: 'system', content: system },
+    ...history,
+    { role: 'user', content: '请根据上文，生成用户下一句发送草稿（仅一行正文）。' },
+  ]);
+}
+
+async function euStGenerateOnceForAssist(stPayload, timeoutMs = 32000) {
+  let stRes = await stGeneratePost(stPayload, timeoutMs);
+  if (!stRes.ok && stRes.status === 400 && typeof buildStPayloadForBadRequestRetry === 'function') {
+    const slim = buildStPayloadForBadRequestRetry(stPayload);
+    if (slim) stRes = await stGeneratePost(slim, timeoutMs);
+  }
+  if (!stRes.ok) throw new Error(`assist_http_${stRes.status}`);
+  const stData = await euSafeHttpJson(stRes);
+  if (stData?.error) throw new Error('assist_st_error');
+  const reply = extractChatReply(stData);
+  if (!reply) throw new Error('assist_empty');
+  return reply;
+}
+
+async function requestAiAssistDraftWithPreset(preset, ctx) {
+  await euActivateCustomSecretForWritingStyle(preset.id, { strict: false });
+  let liveProfile = await fetchStLiveGenerationProfile({ allowStale: true });
+  if (!liveProfile) throw new Error('assist_profile');
+  liveProfile = applyEuTavernConnProfileToLive({ ...liveProfile }, preset);
+  const messages = buildAiAssistMessages(ctx, preset);
+  const chatSrc = String(liveProfile.chat_completion_source || preset.stChatSource || '').toLowerCase();
+  let safeMsgs = euPrepareMessagesForGenerate(messages, chatSrc);
+  let stPayload = normalizeSeedForPayload(
+    normalizeXaiModelForPayload(buildStGeneratePayload(safeMsgs, null, ctx.charName || 'AI', liveProfile)),
+  );
+  stPayload = euSanitizeStPayloadForBackendSource(stPayload);
+  stPayload.max_tokens = Math.min(200, Math.max(96, Number(stPayload.max_tokens) || 160));
+  stPayload.temperature = Math.min(0.92, Number(stPayload.temperature ?? 0.82));
+  const raw = await euStGenerateOnceForAssist(stPayload, 32000);
+  const drafts = parseAiAssistDrafts(raw);
+  return drafts[0] || '';
+}
+
 function parseAiAssistDrafts(rawText) {
   const text = String(rawText || '')
+    .replace(/```[\s\S]*?```/g, ' ')
     .replace(/```(?:json)?/gi, '')
     .trim();
   if (!text) return [];
@@ -15924,7 +16122,7 @@ function parseAiAssistDrafts(rawText) {
     const parsed = JSON.parse(text);
     if (Array.isArray(parsed)) {
       return parsed
-        .map(x => String(x || '').trim())
+        .map((x) => String(x || '').trim())
         .filter(Boolean)
         .filter(isAiAssistDraftUsable)
         .slice(0, 3);
@@ -15934,10 +16132,10 @@ function parseAiAssistDrafts(rawText) {
   }
   return text
     .split(/\r?\n/)
-    .map(line => line.replace(/^\s*(?:[-*]|\d+[.)、])\s*/, '').trim())
-    .map(line => line.replace(/^["'`]+|["'`,]+$/g, '').trim())
-    .filter(line => !/^\s*[\[\]\{\}:]+\s*$/.test(line))
-    .filter(line => !/^\s*json\s*$/i.test(line))
+    .map((line) => line.replace(/^\s*(?:[-*]|\d+[.)、])\s*/, '').trim())
+    .map((line) => line.replace(/^["'`]+|["'`,]+$/g, '').trim())
+    .filter((line) => !/^\s*[\[\]\{\}:]+\s*$/.test(line))
+    .filter((line) => !/^\s*json\s*$/i.test(line))
     .filter(Boolean)
     .filter(isAiAssistDraftUsable)
     .slice(0, 3);
@@ -15946,10 +16144,13 @@ function parseAiAssistDrafts(rawText) {
 function isAiAssistDraftUsable(text) {
   const s = String(text || '').trim();
   if (!s) return false;
-  if (s.length < 16 || s.length > 88) return false;
+  if (s.length < 12 || s.length > 96) return false;
   if (/^[\[\]\{\}"'`,.:;]+$/.test(s)) return false;
   const cjk = (s.match(/[\u4e00-\u9fff]/g) || []).length;
-  return cjk >= 8;
+  if (cjk < 6) return false;
+  const latin = (s.match(/[a-zA-Z]/g) || []).length;
+  if (latin > Math.max(8, cjk)) return false;
+  return true;
 }
 
 function buildAiAssistFallbackDrafts(ctx) {
@@ -15986,35 +16187,48 @@ function getAiAssistContext() {
 }
 
 async function runAiAssist() {
+  if (state.aiAssistRunning) return;
+  state.aiAssistRunning = true;
   openAiAssistPanel();
   const body = document.getElementById('chat-ai-assist-body');
-  if (!body) return;
+  if (!body) {
+    state.aiAssistRunning = false;
+    return;
+  }
   body.className = 'chat-ai-assist-hint';
-  body.textContent = 'AI帮答生成中...';
+  body.textContent = 'AI帮答生成中（随机三档文风）…';
   try {
+    if (isEuGuestMode()) {
+      throw euCreateUserFacingError('请先登录后使用 AI 帮答', 'assist_guest');
+    }
     const ctx = getAiAssistContext();
-    const prompt = '你是“用户代答助手”。请基于当前对话上下文，生成3条“用户下一句可发送草稿”。严格要求：1) 只用简体中文；2) 每条28~72字；3) 三条必须是不同风格：A克制确认、B推进剧情、C情绪表达；4) 用更丰满的叙述，允许包含轻微动作/神态/语气词（如“我顿了顿”“我看着你”），但不要夸张；5) 禁止代码块、JSON、编号、解释。输出格式：纯文本三行，每行一条。';
-    const result = await requestAiReply(prompt, {
-      charName: ctx.charName || 'AI',
-      history: Array.isArray(ctx.history) ? ctx.history : [],
-      allowAutoContinue: false,
-      timeoutMs: 30000,
-    });
-    let drafts = parseAiAssistDrafts(result?.reply || '');
+    const picks = euPickRandomWritingStylePresets(3);
+    const settled = await Promise.allSettled(picks.map((p) => requestAiAssistDraftWithPreset(p, ctx)));
+    let drafts = settled
+      .map((r) => (r.status === 'fulfilled' ? String(r.value || '').trim() : ''))
+      .filter(isAiAssistDraftUsable);
     if (drafts.length < 3) {
       const fallback = buildAiAssistFallbackDrafts(ctx).filter(isAiAssistDraftUsable);
       drafts = [...drafts, ...fallback].slice(0, 3);
     }
-    if (!drafts.length) throw new Error('未生成有效草稿');
+    if (!drafts.length) {
+      throw euCreateUserFacingError('暂时无法生成帮答草稿，请稍后重试', 'assist_all_failed');
+    }
     body.className = 'chat-ai-assist-list';
     body.innerHTML = drafts
-      .map((d, idx) => `<button class="chat-ai-assist-draft" type="button" onclick="applyAiAssistDraft(${idx})">${escapeHtml(d)}</button>`)
+      .map(
+        (d, idx) =>
+          `<button class="chat-ai-assist-draft" type="button" onclick="applyAiAssistDraft(${idx})">${escapeHtml(d)}</button>`,
+      )
       .join('');
     state.aiAssistDrafts = drafts;
   } catch (err) {
     state.aiAssistDrafts = [];
     body.className = 'chat-ai-assist-hint';
-    body.textContent = `生成失败：${err?.message || '未知错误'}`;
+    const msg = err?.message ? euSanitizeUserFacingText(err.message, { internalDetail: err.euInternalDetail || err.message }) : '暂时无法生成帮答草稿，请稍后重试';
+    body.textContent = msg;
+  } finally {
+    state.aiAssistRunning = false;
   }
 }
 
@@ -17468,7 +17682,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260522-writing-style-toggle-inrow-v133';
+const EU_CLIENT_BUILD_STAMP = '20260522-opening-zh-translate-v137';
 /** 游客模式：故事书对话单会话内 user 消息上限（不含隐藏的开场 kickoff）。 */
 const EU_GUEST_MAX_USER_MESSAGES = 10;
 

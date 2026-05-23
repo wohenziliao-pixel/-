@@ -17,7 +17,7 @@
 | 旧书签 | `/eu-demo.html` → 服务端 **308** 到 `/eu.html` |
 | 测试账号 | `wohenziliao`（权限见下；非酒馆 ADMIN） |
 | 公共商城数据 | 服务端 `data/eu-public/mall/`（**不要**用本机 data 覆盖线上） |
-| 前端构建戳 | 控制台 `[次元姬 EU] client build`，当前 **`20260522-writing-style-toggle-inrow-v133`**（见 `docs/eu-completions/2026-05-22-053-网络版v133同步指令.md`） |
+| 前端构建戳 | 控制台 `[次元姬 EU] client build`，当前 **`20260522-opening-zh-translate-v137`**（见 `docs/eu-completions/2026-05-22-059-网络版v137同步指令.md`） |
 
 ---
 
@@ -158,7 +158,7 @@ ls data/eu-public/mall/resources/*.json | wc -l   # 应约 626
 | 本文 | 部署与入口**唯一现行口径** |
 | `docs/eu-completions/2026-05-16-011-联网版URL去掉demo正式eu.html.md` | URL 迁移说明 |
 | `docs/EU-网络版上线整理-2026-05-22.md` | 上传总清单（v118 基线） |
-| `docs/eu-completions/2026-05-22-053-网络版v133同步指令.md` | **本次文风 v131～v133 网络版同步**（复制执行） |
+| `docs/eu-completions/2026-05-22-059-网络版v137同步指令.md` | **本次网络版同步（v134～v137）** |
 | `docs/EU-三窗口开发总归档-2026-05-20至22.md` | **三 Cursor 窗口**开发/踩坑/注意事项总入口 |
 | `docs/eu-completions/2026-05-22-009-新窗口交接-续写开发与待办.md` | 续写/重生成专题交接 |
 | `docs/eu-completions/2026-05-15-009-新窗口交接-开发日记与工作进程.md` | 开发交接（已同步 2026-05-16） |
