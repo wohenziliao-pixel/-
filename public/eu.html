@@ -6751,6 +6751,7 @@ function setActiveWritingStyleId(styleId, conv = null) {
   updateWorldChatFeatureStatus();
   stLiveConfigAt = 0;
   void euRefreshTavernConnectionProfilesCache();
+  void euActivateCustomSecretForWritingStyle(id);
   return true;
 }
 
@@ -7023,6 +7024,46 @@ function buildWritingStyleSystemMessage() {
   const content = String(preset?.prompt || '').trim();
   if (!content) return null;
   return { role: 'system', content, identifier: 'euWritingStyle' };
+}
+
+const EU_WRITING_STYLE_LENGTH_NUDGE =
+  '【篇幅硬指标·最高优先级】本条 assistant 回复正文须达到约 700–1000 汉字；明显偏短视为未达标。世界书摘录仅供设定参考，不得因此缩短正文。';
+
+/** 紧挨 user 轮再次强调篇幅（避免被世界书长 system 冲淡）。 */
+function buildWritingStyleLengthNudgeMessage(styleId) {
+  if (typeof isActiveVirtualLoverChat === 'function' && isActiveVirtualLoverChat()) return null;
+  if (!getEuWritingStyleAgentSystemText(styleId ?? getWritingStyleForGeneration())) return null;
+  return { role: 'system', content: EU_WRITING_STYLE_LENGTH_NUDGE, identifier: 'euWritingStyleLength' };
+}
+
+/**
+ * 温柔风/创意风走 custom：发消息前激活 Connection Manager 里该 profile 绑定的 Custom 密钥。
+ * 否则全局仅一条「当前激活」的 api_key_custom，会拿错智谱/Venice 的 Key。
+ */
+async function euActivateCustomSecretForWritingStyle(styleId) {
+  if (isEuGuestMode()) return;
+  const preset = getWritingStylePreset(normalizeWritingStyleId(styleId ?? getWritingStyleForGeneration()));
+  if (String(preset?.stChatSource || '').toLowerCase() !== 'custom') return;
+  const tp = findEuTavernConnectionProfileByName(preset.stTavernConnName);
+  const secretId = String(tp?.['secret-id'] || '').trim();
+  if (!secretId) {
+    console.warn('[EU] custom 文风缺少 secret-id', preset.stTavernConnName);
+    return;
+  }
+  try {
+    const csrfToken = await ensureStCsrfToken();
+    const res = await fetch(normalizeEuFetchUrl('/api/secrets/rotate'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      credentials: 'include',
+      body: JSON.stringify({ key: 'api_key_custom', id: secretId }),
+    });
+    if (!res.ok) {
+      console.warn('[EU] custom secret rotate failed', preset.stTavernConnName, res.status);
+    }
+  } catch (e) {
+    console.warn('[EU] custom secret rotate', preset.stTavernConnName, e?.message || e);
+  }
 }
 
 function euFormatWritingStyleApiShort(route) {
@@ -16826,8 +16867,6 @@ function buildBudgetedMessages(runtimeSystemMessages, history, userText, livePro
       optionalSystem.push({ role: 'system', content: EU_VIRTUAL_LOVER_STYLE_SYSTEM, identifier: 'euVirtualLoverStyle' });
     }
     if (autoContinueSystem?.content) optionalSystem.push(autoContinueSystem);
-    const writingStyleAgentSystem = virtualLoverMode ? null : buildWritingStyleAgentSystemMessage();
-    if (writingStyleAgentSystem?.content) optionalSystem.push(writingStyleAgentSystem);
     const writingStyleSystem = virtualLoverMode ? null : buildWritingStyleSystemMessage();
     if (writingStyleSystem?.content) optionalSystem.push(writingStyleSystem);
     if (!virtualLoverMode && storybookRuleSystem?.content) optionalSystem.push(storybookRuleSystem);
@@ -16844,6 +16883,10 @@ function buildBudgetedMessages(runtimeSystemMessages, history, userText, livePro
     const crossoverSys = manualContinue || virtualLoverMode ? null : buildCrossoverCharacterSystemMessage();
     if (crossoverSys?.content) optionalSystem.push(crossoverSys);
     if (!manualContinue && globalSettingsSystem?.content) optionalSystem.push(globalSettingsSystem);
+    const writingStyleAgentSystem = virtualLoverMode ? null : buildWritingStyleAgentSystemMessage();
+    if (writingStyleAgentSystem?.content) optionalSystem.push(writingStyleAgentSystem);
+    const writingStyleLengthNudge = virtualLoverMode ? null : buildWritingStyleLengthNudgeMessage();
+    if (writingStyleLengthNudge?.content) optionalSystem.push(writingStyleLengthNudge);
     const historySlice = selectHistoryWithinContextBudget(optionalSystem, userText, safeHistory, liveProfile, { manualContinue });
     const coreMessages = [
       ...optionalSystem,
@@ -17120,7 +17163,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260522-writing-style-agent-system-v123';
+const EU_CLIENT_BUILD_STAMP = '20260522-custom-secret-length-nudge-v124';
 /** 游客模式：故事书对话单会话内 user 消息上限（不含隐藏的开场 kickoff）。 */
 const EU_GUEST_MAX_USER_MESSAGES = 10;
 
@@ -17889,6 +17932,7 @@ async function fetchStLiveGenerationProfile(opts = {}) {
   const now = Date.now();
   const allowStale = opts.allowStale === true;
   if (stLiveConfigCache && (allowStale || now - stLiveConfigAt < 60000)) {
+    await euActivateCustomSecretForWritingStyle(getWritingStyleForGeneration());
     return applyEuReplyMaxTokensToProfile(resolveEuLiveProfileForGeneration({ ...stLiveConfigCache }));
   }
   if (isEuGuestMode()) {
@@ -17920,6 +17964,7 @@ async function fetchStLiveGenerationProfile(opts = {}) {
     if (!snap) return null;
     stLiveConfigCache = snap.profile;
     stLiveConfigAt = now;
+    await euActivateCustomSecretForWritingStyle(getWritingStyleForGeneration());
     return applyEuReplyMaxTokensToProfile(resolveEuLiveProfileForGeneration({ ...snap.profile }));
   } catch {
     return null;
@@ -18384,7 +18429,7 @@ function collapseRepeatingTextLoops(raw) {
 
 function euFirstPassStreamHealthy(text, deltaCount = 0) {
   const s = String(text || '').trim();
-  if (deltaCount < 2 || s.length < 32) return false;
+  if (deltaCount < 1 || s.length < 80) return false;
   if (isDegenerateModelReply(s, null)) return false;
   if (isModelGibberishCollapse(s)) return false;
   if (hasLeakedControlTags(s)) return false;
