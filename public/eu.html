@@ -1193,6 +1193,89 @@ body.eu-page-chatroom .main-content {
   .chat-ai-assist-list {
     max-height: min(38vh, 280px);
   }
+  /* 故事书全屏对话：顶栏不挡内容；标题/开场白正常横排可读 */
+  body[data-world-chat-active='1'] .topbar-mobile {
+    display: none !important;
+  }
+  #page-world-chat.page.active {
+    z-index: 150;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+  }
+  #page-world-chat .chat-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    padding: 10px 12px !important;
+    gap: 8px;
+  }
+  #page-world-chat .world-chat-header-main {
+    flex: 1 1 100%;
+    min-width: 0;
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 6px !important;
+  }
+  #world-chat-title {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    font-size: 0.95rem !important;
+    line-height: 1.4 !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: break-word;
+    line-break: auto;
+  }
+  #page-world-chat .runtime-status-badge.mode-feature {
+    display: none;
+  }
+  #page-world-chat .runtime-status-badge.mode-st {
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .world-chat-messages {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  #page-world-chat .chat-item {
+    width: 100%;
+    max-width: 100%;
+  }
+  #page-world-chat .chat-role {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    word-break: normal !important;
+    overflow-wrap: break-word;
+    line-break: auto;
+    max-width: 100%;
+  }
+  #page-world-chat .chat-bubble,
+  #page-world-chat .chat-item.is-ai .chat-bubble,
+  #page-world-chat .chat-bubble.eu-readable-prose {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+    word-break: normal !important;
+    overflow-wrap: break-word;
+    line-break: auto;
+  }
+  #page-world-chat .chat-bubble .eu-readable-p {
+    word-break: normal !important;
+    overflow-wrap: break-word;
+    line-break: auto;
+  }
+  #page-world-chat .reply-token-badge {
+    flex-shrink: 0;
+    white-space: nowrap;
+    margin-left: 0;
+  }
   .account-profile-wrap {
     padding: 0 0 40px;
   }
@@ -7413,28 +7496,192 @@ function selectWritingStyle(styleId) {
   showToast(`文风：${preset.label} · ${adultNote}`, 'success');
 }
 
+/** 单条文风：连接、密钥、合并后 profile（供审计，不发起真实 generate）。 */
+function euAuditWritingStylePresetRow(preset) {
+  const p = preset && typeof preset === 'object' ? preset : null;
+  if (!p) return { ok: false, issue: 'invalid_preset' };
+  const tp = findEuTavernConnectionProfileByName(p.stTavernConnName);
+  const src = String(p.stChatSource || '').toLowerCase();
+  const secretKey = EU_STYLE_SECRET_KEYS[src] || null;
+  const secretId = secretKey ? euResolveProfileSecretIdForStyle(tp, p.stTavernConnName, secretKey) : '';
+  let merged = {
+    chat_completion_source: src,
+    model: String(p.stModel || '').trim(),
+    custom_url: String(p.customUrl || '').trim(),
+  };
+  merged = applyEuTavernConnProfileToLive(merged, p);
+  const issues = [];
+  if (!tp) issues.push('tavern_profile_missing');
+  if (secretKey && !secretId) issues.push('secret_id_missing');
+  const m = String(merged.model || merged.custom_model || merged.openrouter_model || merged.xai_model || '').trim();
+  const url = String(merged.custom_url || '').trim();
+  if (!m) issues.push('model_empty');
+  if (src === 'custom' && !url) issues.push('custom_url_empty');
+  if (/z-ai\//i.test(m) && /bigmodel\.cn/i.test(url)) issues.push('zai_bigmodel_mismatch');
+  if (/venice/i.test(m) && /bigmodel\.cn/i.test(url)) issues.push('venice_bigmodel_mismatch');
+  if (tp && String(tp.api || '').toLowerCase() && String(tp.api).toLowerCase() !== src) {
+    issues.push(`tavern_api_mismatch:${tp.api}≠${src}`);
+  }
+  return {
+    id: p.id,
+    label: p.label,
+    active: p.id === getWritingStyleForGeneration(),
+    stTavernConnName: p.stTavernConnName || null,
+    stChatSource: src || null,
+    stModel: p.stModel || null,
+    customUrl: p.customUrl || null,
+    stPresetName: p.stPresetName || null,
+    tavernFound: Boolean(tp),
+    tavernApi: tp?.api || null,
+    tavernModel: tp?.model || null,
+    tavernSecretId: String(tp?.['secret-id'] || '').trim() || null,
+    secretKey,
+    secretResolved: Boolean(secretId),
+    mergedSource: String(merged.chat_completion_source || ''),
+    mergedModel: m || null,
+    mergedCustomUrl: url || null,
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
 /** 控制台核对五条文风与 API：dumpEuWritingStyleApiAudit() */
 function dumpEuWritingStyleApiAudit() {
   const activeId = getWritingStyleForGeneration();
   const route = getWritingStyleApiRoute();
-  const rows = EU_WRITING_STYLE_PRESETS.map((p) => {
-    const tp = findEuTavernConnectionProfileByName(p.stTavernConnName);
-    return {
-      id: p.id,
-      label: p.label,
-      stTavernConnName: p.stTavernConnName || null,
-      stChatSource: p.stChatSource || null,
-      stModel: p.stModel || null,
-      customUrl: p.customUrl || null,
-      stPresetName: p.stPresetName || null,
-      active: p.id === activeId,
-      tavernFound: Boolean(tp),
-      tavernApi: tp?.api || null,
-      tavernModel: tp?.model || null,
-    };
-  });
+  const rows = EU_WRITING_STYLE_PRESETS.map((p) => euAuditWritingStylePresetRow(p));
   const out = { activeId, route, presets: rows, build: EU_CLIENT_BUILD_STAMP };
   console.info('[EU] writing-style API audit', out);
+  return out;
+}
+
+/**
+ * 五条文风 API 全量诊断（含 generate 路由是否 404）。
+ * 控制台：await auditEuWritingStyleApis()；真实打上游：await auditEuWritingStyleApis({ probeGenerate: true })
+ */
+async function auditEuWritingStyleApis(opts = {}) {
+  const probeGenerate = opts.probeGenerate === true;
+  await euRefreshTavernConnectionProfilesCache();
+  await euRefreshCustomSecretsReadCache();
+  const routes = {
+    csrf: null,
+    generatePrimary: null,
+    generateAlt: null,
+  };
+  try {
+    const csrfRes = await fetch(normalizeEuFetchUrl('/csrf-token'), { credentials: 'include' });
+    routes.csrf = csrfRes.status;
+  } catch (e) {
+    routes.csrf = `err:${e?.message || e}`;
+  }
+  const candidates = getStGenerateApiCandidates();
+  for (let i = 0; i < candidates.length; i += 1) {
+    const url = candidates[i];
+    try {
+      let csrf = state.stCsrfToken;
+      if (!csrf) {
+        try {
+          csrf = await ensureStCsrfToken();
+        } catch {
+          csrf = '';
+        }
+      }
+      const res = await fetch(normalizeEuFetchUrl(url), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(csrf ? { 'X-CSRF-Token': csrf } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          type: 'normal',
+          chat_completion_source: 'custom',
+          custom_url: 'http://127.0.0.1:1/',
+          model: 'eu-route-probe',
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 1,
+          stream: false,
+        }),
+      });
+      if (i === 0) routes.generatePrimary = res.status;
+      else routes.generateAlt = res.status;
+    } catch (e) {
+      const slot = i === 0 ? 'generatePrimary' : 'generateAlt';
+      routes[slot] = `err:${e?.message || e}`;
+    }
+  }
+  const generateReachable =
+    (typeof routes.generatePrimary === 'number' && routes.generatePrimary !== 404 && routes.generatePrimary !== 405) ||
+    (typeof routes.generateAlt === 'number' && routes.generateAlt !== 404 && routes.generateAlt !== 405);
+  const presets = EU_WRITING_STYLE_PRESETS.map((p) => euAuditWritingStylePresetRow(p));
+  const generateProbes = [];
+  if (probeGenerate && generateReachable) {
+    const savedStyle = getWritingStyleForGeneration();
+    for (const p of EU_WRITING_STYLE_PRESETS) {
+      const row = { id: p.id, label: p.label, rotate: null, http: null, ok: false, note: '' };
+      try {
+        setActiveWritingStyleId(p.id);
+        await euRefreshCustomSecretsReadCache();
+        await euActivateCustomSecretForWritingStyle(p.id, { strict: true });
+        row.rotate = 'ok';
+        const liveProfile = await fetchStLiveGenerationProfile({ allowStale: false });
+        if (!liveProfile) {
+          row.note = 'live_profile_null';
+        } else {
+          const messages = [{ role: 'user', content: '请只回复一个字：好' }];
+          const stPayload = euSanitizeStPayloadForBackendSource(
+            normalizeXaiModelForPayload(buildStGeneratePayload(messages, null, 'EU-Audit', liveProfile)),
+          );
+          stPayload.max_tokens = 8;
+          stPayload.stream = false;
+          const res = await stGeneratePost(stPayload, 25000);
+          row.http = res.status;
+          if (res.ok) {
+            const data = await euSafeHttpJson(res);
+            const reply = extractChatReply(data);
+            row.ok = Boolean(String(reply || '').trim());
+            row.note = row.ok ? 'reply_ok' : 'empty_reply';
+          } else {
+            let body = '';
+            try {
+              body = String(await res.text() || '').slice(0, 200);
+            } catch {
+              body = '';
+            }
+            row.note = body || res.statusText || 'http_error';
+          }
+        }
+      } catch (e) {
+        row.note = String(e?.euInternalDetail || e?.message || e).slice(0, 240);
+      }
+      generateProbes.push(row);
+      try {
+        setActiveWritingStyleId(savedStyle);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  const summary = {
+    generateReachable,
+    presetsOk: presets.filter((r) => r.ok).length,
+    presetsTotal: presets.length,
+    probesOk: generateProbes.filter((r) => r.ok).length,
+  };
+  const out = {
+    build: EU_CLIENT_BUILD_STAMP,
+    activeId: getWritingStyleForGeneration(),
+    routes,
+    summary,
+    presets,
+    generateProbes: probeGenerate ? generateProbes : undefined,
+    hint: !generateReachable
+      ? 'generate 返回 404/不可达：所有文风均无法对话，请先修复服务器反代或重启 SillyTavern（/api/backends/chat-completions/generate）'
+      : presets.some((r) => !r.ok)
+        ? '部分文风缺少 Connection Manager 配置或 secret-id，见各条 issues'
+        : '配置层面五条文风均已就绪；若仍失败请用 probeGenerate:true 实测上游',
+  };
+  console.info('[EU] writing-style API full audit', out);
   return out;
 }
 
@@ -11324,7 +11571,7 @@ function createWorldChatPage() {
   page.innerHTML = `
     <div class="chat-header" style="padding: 4px 10px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-height: 30px;">
       <button onclick="backToWorld()" style="width:auto;min-width:24px;padding:0 4px;background:none;border:none;color:var(--text);cursor:pointer;font-size:1.05rem;line-height:1;flex:0 0 auto;">←</button>
-      <div style="min-width:0;flex:1;display:flex;align-items:center;gap:8px;">
+      <div class="world-chat-header-main" style="min-width:0;flex:1;display:flex;align-items:center;gap:8px;">
         <span id="world-chat-title" style="font-weight:500;font-size:0.9rem;line-height:1.2;">选择角色</span>
         <span id="world-chat-runtime-status" class="runtime-status-badge mode-st">链路：ST 主链路</span>
         <span id="world-chat-feature-status" class="runtime-status-badge mode-feature">规则：未启用 | 设定集：0</span>
@@ -11452,7 +11699,8 @@ function syncWorldChatLayout() {
   const bottom = `${bottomPx}px`;
   page.style.top = top;
   page.style.bottom = bottom;
-  page.style.height = `calc(100vh - ${topPx}px - ${bottom})`;
+  const vh = typeof window.innerHeight === 'number' ? window.innerHeight : 0;
+  page.style.height = vh > 0 ? `${Math.max(120, vh - topPx - bottomPx)}px` : `calc(100dvh - ${top} - ${bottom})`;
   const container = document.getElementById('world-chat-messages');
   if (container) {
     // Keep final line visible above the fixed global input bar.
@@ -17682,7 +17930,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260522-opening-zh-translate-v137';
+const EU_CLIENT_BUILD_STAMP = '20260522-writing-style-api-audit-v140';
 /** 游客模式：故事书对话单会话内 user 消息上限（不含隐藏的开场 kickoff）。 */
 const EU_GUEST_MAX_USER_MESSAGES = 10;
 
@@ -18079,6 +18327,7 @@ try {
   window.runEuStAlignmentSelfCheckAsync = runEuStAlignmentSelfCheckAsync;
   window.dumpEuStorybookPromptAudit = dumpEuStorybookPromptAudit;
   window.dumpEuWritingStyleApiAudit = dumpEuWritingStyleApiAudit;
+  window.auditEuWritingStyleApis = auditEuWritingStyleApis;
 } catch {
   // ignore global binding errors
 }
@@ -19213,6 +19462,9 @@ async function requestAiReplyStream(userText, options = {}, onDelta) {
         state.stCsrfToken = '';
         continue;
       }
+      if ((res.status === 404 || res.status === 405) && attempt === 0) {
+        continue;
+      }
       break;
     }
     if (!res || !res.ok || !res.body) {
@@ -19235,10 +19487,11 @@ async function requestAiReplyStream(userText, options = {}, onDelta) {
           onDelta,
         );
       }
-      throw euCreateUserFacingError(
-        '对话服务暂时不可用，请稍后重试',
-        `stream_http_${httpSt}`,
-      );
+      const streamPublicMsg =
+        httpSt === 404 || httpSt === 405
+          ? '对话接口未找到，请确认服务器已启动且反代包含 /api 路径'
+          : '对话服务暂时不可用，请稍后重试';
+      throw euCreateUserFacingError(streamPublicMsg, `stream_http_${httpSt}`);
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder('utf-8');
@@ -19370,7 +19623,7 @@ async function requestAiReply(userText, options = {}) {
   pushEuAlignmentProbe(buildEuAlignmentProbe('non_stream_request', stPayload, messagesNs, liveProfile));
   updateWorldChatRuntimeStatus();
   if (EU_ALLOW_DIRECT_LLAMA_FALLBACK && shouldForceDirectLlama()) {
-    return requestDirectLlamaReply(stPayload, messages, startedAt, charName, 'forced_direct_cooldown');
+    return requestDirectLlamaReply(stPayload, messagesNs, startedAt, charName, 'forced_direct_cooldown');
   }
   logEuGenerationDiff('request:st.generate', {
     status: 'sending',
@@ -19404,8 +19657,8 @@ async function requestAiReply(userText, options = {}) {
     budget: {
       max_context: liveProfile?.max_context || null,
       max_tokens: liveProfile?.max_tokens || null,
-      built_messages: messages.length,
-      built_tokens_est: estimateMessagesTokens(messages),
+      built_messages: messagesNs.length,
+      built_tokens_est: estimateMessagesTokens(messagesNs),
     },
     featureProbe: getEuFeatureProbe(),
     parityPolicy: { ...EU_PARITY_POLICY },
@@ -19462,7 +19715,7 @@ async function requestAiReply(userText, options = {}) {
         return slice;
       })();
       // 400 is usually payload compatibility; allow direct fallback even in strict mode.
-      return requestDirectLlamaReply(stPayload, messages, startedAt, charName, 'recover_from_400', merged400 ? `SillyTavern 400：${merged400}` : 'SillyTavern 400（精简重试仍失败）');
+      return requestDirectLlamaReply(stPayload, messagesNs, startedAt, charName, 'recover_from_400', merged400 ? `SillyTavern 400：${merged400}` : 'SillyTavern 400（精简重试仍失败）');
     }
     if (isSystemOrderTemplateErrorText(rawErrorText || stRes.statusText)) {
       const safePayload = { ...stPayload, messages: buildTemplateSafeMessages(stPayload.messages) };
@@ -19489,7 +19742,7 @@ async function requestAiReply(userText, options = {}) {
     }
     return requestDirectLlamaReply(
       stPayload,
-      messages,
+      messagesNs,
       startedAt,
       charName,
       'st_non_2xx_fallback',
@@ -19510,7 +19763,7 @@ async function requestAiReply(userText, options = {}) {
     });
     return requestDirectLlamaReply(
       stPayload,
-      messages,
+      messagesNs,
       startedAt,
       charName,
       'st_json_error_fallback',
@@ -19556,7 +19809,7 @@ async function requestAiReply(userText, options = {}) {
       });
     }
     // Hard fallback: if ST returns reasoning-only, switch to direct backend once.
-    return requestDirectLlamaReply(stPayload, messages, startedAt, charName, 'reasoning_only_no_visible_content', '模型未返回可见正文（可能仅有 reasoning）');
+    return requestDirectLlamaReply(stPayload, messagesNs, startedAt, charName, 'reasoning_only_no_visible_content', '模型未返回可见正文（可能仅有 reasoning）');
   }
   markStSuccess();
   pushEuPerfLog({

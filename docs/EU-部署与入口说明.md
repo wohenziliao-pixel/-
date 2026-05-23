@@ -17,7 +17,7 @@
 | 旧书签 | `/eu-demo.html` → 服务端 **308** 到 `/eu.html` |
 | 测试账号 | `wohenziliao`（权限见下；非酒馆 ADMIN） |
 | 公共商城数据 | 服务端 `data/eu-public/mall/`（**不要**用本机 data 覆盖线上） |
-| 前端构建戳 | 控制台 `[次元姬 EU] client build`，当前 **`20260522-opening-zh-translate-v137`**（见 `docs/eu-completions/2026-05-22-059-网络版v137同步指令.md`） |
+| 前端构建戳 | 控制台 `[次元姬 EU] client build`，当前 **`20260522-writing-style-api-audit-v140`**（见 `docs/eu-completions/2026-05-22-062-五条文风API全量诊断.md`） |
 
 ---
 
