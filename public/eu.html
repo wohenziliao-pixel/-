@@ -319,6 +319,10 @@ button.btn-secondary { background: var(--panel-soft); border-color: var(--border
 #virtual-lover-nav-item .nav-item-icon { color: #ef4444; }
 #virtual-lover-submenu .world-submenu-avatar { color: #ef4444; }
 .nav-item-text { font-weight: 500; }
+.eu-upload-worldbook-nav .nav-item-icon {
+  font-size: 1.15rem;
+  filter: saturate(1.05);
+}
 .nav-item.has-submenu {
   display: flex;
   flex-direction: column;
@@ -4728,6 +4732,11 @@ label.eu-add-character-pick input {
         <span class="nav-item-icon">💬</span>
         <span class="nav-item-text">灌水交流区</span>
       </div>
+      <div class="nav-item eu-upload-worldbook-nav" id="eu-upload-worldbook-nav" data-eu-nav="upload-worldbook" title="上传 JSON/PNG 世界书到本账号私有库（不进商城）" onclick="void euOpenPrivateStorybookUploadPicker()">
+        <span class="nav-item-icon" aria-hidden="true">📕</span>
+        <span class="nav-item-text">上传世界书</span>
+      </div>
+      <input type="file" id="eu-private-storybook-upload-file" accept=".json,.png,application/json,image/png" style="display:none;" onchange="void euHandlePrivateStorybookUploadFile(this)">
     </nav>
 
     <div class="sidebar-footer">
@@ -5873,14 +5882,14 @@ label.eu-add-character-pick input {
       <button class="modal-close" onclick="hideModal('author-rule-modal')">✕</button>
     </div>
     <div class="modal-body">
-      <div class="chat-author-rule-title">以下规则仅对当前故事书长期生效。每行一条，可随时增删。</div>
+      <div class="chat-author-rule-title">以下规则仅对当前故事书长期生效（每行一条）。注入位置对齐酒馆<strong>作者注释</strong>：默认插在对话栈深度 4（靠近最近几轮），优先级高于一般世界书摘录。</div>
       <div class="chat-author-rule-grid">
         <label class="full">本故事书规则（每行一条）
           <textarea id="chat-storybook-rules" rows="6" placeholder="示例：\n严格按当前剧情续写，不新增主线。\n只允许已登场角色发言。"></textarea>
         </label>
       </div>
       <div class="chat-author-rule-title" style="margin-top:14px;">字符控制</div>
-      <p class="chat-author-rule-hint" style="margin:4px 0 8px;font-size:0.82rem;opacity:0.85;line-height:1.5;">仅对本故事书生效：用<strong>估算 token</strong>判断<strong>整条 AI 气泡（含自动续写合并）</strong>是否低于「目标」，低于则再请求（最多 2 次）。<strong>每次 API 请求的 max_tokens</strong>（含手动续写、重新生成、自动续写嵌套）均与当前单轮上限一致（默认 2048），不再按目标 token 收紧。</p>
+      <p class="chat-author-rule-hint" style="margin:4px 0 8px;font-size:0.82rem;opacity:0.85;line-height:1.5;">仅对本故事书生效：在<strong>单轮生成</strong>时生效——指令插在<strong>本轮用户输入正前方</strong>（高于「新增规则」），并按目标为本次请求设置 <code>max_tokens</code>（不超过预设单轮上限，默认 2048）。<strong>不靠续写第二轮补长</strong>；左下角「续写」仍不走字符控制。</p>
       <div class="chat-author-rule-grid">
         <label class="full eu-ac-row">
           <input type="checkbox" id="chat-storybook-autocontinue-enabled">
@@ -7212,6 +7221,12 @@ function validateEuWritingStyleGenerationRoute(liveProfile) {
   }
   if (!tp) {
     console.warn('[EU] writing style tavern profile missing', detailBase);
+    if (preset.id === 'gentle') {
+      throw euCreateUserFacingError(
+        '温柔风需酒馆中存在 GLM5.1 连接配置；请换其他文风或联系管理员执行 API 同步',
+        `writing_style_gentle_profile_missing:${JSON.stringify(detailBase)}`,
+      );
+    }
   }
   if (/z-ai\//i.test(model) && /bigmodel\.cn/i.test(url)) {
     throw euCreateUserFacingError(
@@ -7230,7 +7245,9 @@ function validateEuWritingStyleGenerationRoute(liveProfile) {
     const secretId = euResolveProfileSecretIdForStyle(tp, connName, secretKey);
     if (!secretId) {
       throw euCreateUserFacingError(
-        '当前文风尚未完成连接配置，请切换其他文风或稍后在连接设置中完成绑定',
+        preset.id === 'gentle'
+          ? '温柔风尚未绑定智谱 GLM5.1 密钥（Connection Manager → GLM5.1 → 保存并写入 secret-id）'
+          : '当前文风尚未完成连接配置，请切换其他文风或稍后在连接设置中完成绑定',
         `writing_style_secret_missing: ${JSON.stringify({ ...detailBase, secretKey })}`,
       );
     }
@@ -7520,9 +7537,38 @@ function openWritingStylePanel() {
   showModal('writing-style-modal');
 }
 
-function selectWritingStyle(styleId) {
+/** 切换文风后确保 Connection Manager + secret 轮换就绪（温柔风走 GLM5.1/custom，最易缺绑定）。 */
+async function euEnsureWritingStyleReady(styleId, opts = {}) {
+  const preset = getWritingStylePreset(normalizeWritingStyleId(styleId));
+  const strict = opts.strict !== false;
+  await euRefreshTavernConnectionProfilesCache();
+  const src = String(preset.stChatSource || '').toLowerCase();
+  if (EU_STYLE_SECRET_KEYS[src]) {
+    await euRefreshCustomSecretsReadCache();
+    await euActivateCustomSecretForWritingStyle(preset.id, { strict });
+  }
+  const row = euAuditWritingStylePresetRow(preset);
+  if (!strict || !row.issues?.length) return row;
+  const gentleHint = preset.id === 'gentle';
+  throw euCreateUserFacingError(
+    gentleHint
+      ? '温柔风需绑定酒馆 Connection Manager 的 GLM5.1（智谱密钥）；请换其他文风或联系管理员同步 API 配置'
+      : '当前文风暂时不可用，请切换其他文风或稍后再试',
+    `writing_style_not_ready:${preset.id}:${row.issues.join(',')}`,
+  );
+}
+
+async function selectWritingStyle(styleId) {
   if (!setActiveWritingStyleId(styleId)) {
     showToast('无法保存文风（未绑定故事书）', 'warning');
+    return;
+  }
+  try {
+    await euEnsureWritingStyleReady(styleId, { strict: true });
+  } catch (err) {
+    const msg = err?.message ? euSanitizeUserFacingText(err.message, { internalDetail: err.euInternalDetail }) : '当前文风暂时不可用';
+    showToast(msg, 'warning');
+    renderWritingStyleModalList();
     return;
   }
   renderWritingStyleModalList();
@@ -7816,23 +7862,36 @@ function euComputeAutoContinueBudget(acIn) {
   return { ...ac, targetTokens: target, minTokens, maxTokens };
 }
 
-function buildAutoContinueSystemMessage(userText = '') {
+function buildCharacterControlInjectionContent(userText = '') {
   const budget = euComputeAutoContinueBudget();
-  if (!budget.enabled || budget.maxTokens <= 0) return null;
+  if (!budget.enabled || budget.maxTokens <= 0) return '';
+  const genMax = budget.maxTokens;
   const lines = [
-    '【字符控制 · 最高优先级】',
-    '本块优先于世界书摘录及卡内与之冲突的长度指令。',
-    `本条 assistant 回复估算 token 须在 ${budget.minTokens}–${budget.maxTokens}（目标约 ${budget.targetTokens}），严禁超过 ${budget.maxTokens}。`,
-    '写够后在区间内自然收束，以完整句/段结尾；不足过短视为未达标。',
+    '【系统指令 · 字符控制 · 本轮生成硬性要求（非用户剧情对白，勿当作用户发言）】',
+    '优先级：高于作者注释级「新增规则」与世界书摘录；冲突时篇幅以本条为准。',
+    `本条 assistant 回复估算 token 须在 ${budget.minTokens}–${budget.maxTokens}（目标约 ${budget.targetTokens}）。`,
+    `禁止在不足约 ${budget.minTokens} token 前收束、概括带过、省略号截断或「下回分解」；须在本单轮内写满后自然结尾。`,
+    `本次请求 max_tokens=${genMax}（不超过单轮上限，按目标预留），请写满目标区间后再收束。`,
   ];
-  const rules = getActiveStorybookRules();
-  if (rules.length) {
-    lines.push('', '【本故事书用户规则】');
-    rules.forEach((r, i) => lines.push(`${i + 1}. ${r}`));
-  }
   const ut = String(userText || '').trim();
-  if (ut) lines.push('', `用户本轮：${ut.slice(0, 120)}`);
-  return { role: 'system', content: lines.join('\n').trim(), identifier: 'euCharacterControl' };
+  if (ut) lines.push('', `用户本轮剧情输入（供衔接，勿复述）：${ut.slice(0, 160)}`);
+  return lines.join('\n').trim();
+}
+
+/** @deprecated 旧版 system 前置；现改 user 轮紧贴本轮输入 */
+function buildAutoContinueSystemMessage(userText = '') {
+  const content = buildCharacterControlInjectionContent(userText);
+  if (!content) return null;
+  return { role: 'system', content, identifier: 'euCharacterControl' };
+}
+
+function applyCharacterControlBeforeUserTurn(history = [], userText = '', hints = {}) {
+  if (hints.manualContinue === true) return Array.isArray(history) ? history : [];
+  const content = buildCharacterControlInjectionContent(userText);
+  if (!content) return Array.isArray(history) ? history : [];
+  const arr = Array.isArray(history) ? [...history] : [];
+  arr.push({ role: 'user', content });
+  return arr;
 }
 
 function euPickContinuationUserPrompt() {
@@ -7862,10 +7921,26 @@ function euBuildManualContinuePrompt(lastContent = '') {
   ].join('\n');
 }
 
-/** 发消息 / 续写 / 重写 / 自动续写嵌套：单轮 max_tokens 统一用当前 liveProfile，不按旧「字符控制目标」收紧。 */
-function euApplyLiveProfileMaxTokens(stPayload, liveProfile) {
+/** 发消息：字符控制开启时按目标为<strong>首轮</strong>设置 max_tokens；手动续写/嵌套续写仍用预设单轮上限。 */
+function euApplyGenerationMaxTokens(stPayload, liveProfile, options = {}) {
   if (!stPayload || typeof stPayload !== 'object') return;
-  stPayload.max_tokens = normalizeEuReplyMaxTokens(liveProfile?.max_tokens ?? EU_REPLY_MAX_TOKENS_DEFAULT);
+  const profileMax = normalizeEuReplyMaxTokens(liveProfile?.max_tokens ?? EU_REPLY_MAX_TOKENS_DEFAULT);
+  const manualContinue = options.manualContinue === true;
+  const nestedContinue = Number(options.autoContinueDepth || 0) > 0;
+  if (manualContinue || nestedContinue) {
+    stPayload.max_tokens = profileMax;
+    return;
+  }
+  const budget = euComputeAutoContinueBudget();
+  if (budget.enabled && budget.maxTokens > 0) {
+    stPayload.max_tokens = Math.min(profileMax, budget.maxTokens);
+    return;
+  }
+  stPayload.max_tokens = profileMax;
+}
+
+function euApplyLiveProfileMaxTokens(stPayload, liveProfile, options = {}) {
+  euApplyGenerationMaxTokens(stPayload, liveProfile, options);
 }
 
 /** 进会话时：故事书 meta store → 当前会话 metadata，避免刷新后会话快照仍是默认关/500。 */
@@ -7950,10 +8025,13 @@ function clearStorybookMetaForBook({ storybookUid = '', storybookTitle = '' } = 
   return changed;
 }
 
-/** 是否允许发起「续写」第二轮 chat-completions（对齐酒馆「允许使用聊天补全 API」+ 总开关）。 */
+/** 是否允许发起「续写」第二轮 chat-completions（字符控制启用时改由单轮 max_tokens + 紧贴输入指令达成，不走补长续写）。 */
 function canEuAutoContinueSecondRequest() {
   const ac = getStorybookAutoContinueForGeneration();
-  return Boolean(ac.enabled && ac.allowChatCompletions);
+  if (!ac.enabled || !ac.allowChatCompletions) return false;
+  const budget = euComputeAutoContinueBudget();
+  if (budget.enabled && budget.targetTokens > 0) return false;
+  return true;
 }
 
 function getEuLastChatResumeKey() {
@@ -8503,13 +8581,54 @@ function setActiveStorybookRules(lines = [], conv = null) {
   return true;
 }
 
-function getStorybookRuleSystemMessage(userText = '', conv = null) {
+/** 与酒馆 Author's Note 默认深度一致：插在近期对话前，而非堆在 system 最前。 */
+const EU_STORYBOOK_RULE_AUTHOR_NOTE_DEPTH = 4;
+
+function insertMessageByDepth(list = [], message, depth = 0) {
+  const arr = Array.isArray(list) ? [...list] : [];
+  const msg = message && typeof message === 'object' ? message : null;
+  if (!msg) return arr;
+  const d = Math.max(0, Number(depth || 0));
+  const idx = Math.max(0, arr.length - d);
+  arr.splice(idx, 0, {
+    role: msg.role === 'assistant' ? 'assistant' : msg.role === 'user' ? 'user' : 'system',
+    content: String(msg.content || ''),
+  });
+  return arr;
+}
+
+function buildStorybookRulesAuthorNoteContent(conv = null, userText = '') {
   const rules = getActiveStorybookRules(conv);
-  if (!rules.length) return null;
-  const lines = ['以下是当前故事书用户规则（必须遵守）：'];
+  if (!rules.length) return '';
+  const lines = [
+    '【作者注释级 · 本故事书用户规则 · 必须遵守】',
+    '优先级：与酒馆「作者注释 / Author\'s Note」同级，高于一般世界书摘录与文风铺陈；冲突时以本规则为准。',
+  ];
   rules.forEach((r, i) => lines.push(`${i + 1}. ${r}`));
-  if (userText) lines.push(`用户本轮输入：${String(userText).slice(0, 120)}`);
-  return { role: 'system', content: lines.join('\n').trim(), identifier: 'euStorybookRules' };
+  const ut = String(userText || '').trim();
+  if (ut) lines.push('', `用户本轮输入：${ut.slice(0, 160)}`);
+  return lines.join('\n').trim();
+}
+
+function buildStorybookRulesAuthorNoteMessage(userText = '', conv = null) {
+  const content = buildStorybookRulesAuthorNoteContent(conv, userText);
+  if (!content) return null;
+  return {
+    role: 'user',
+    content: `【系统指令 · 作者注释级用户规则（非用户剧情对白）】\n${content}`,
+    identifier: 'euStorybookRulesAuthorNote',
+  };
+}
+
+/** @deprecated 保留旧名；现统一走作者注释深度注入 */
+function getStorybookRuleSystemMessage(userText = '', conv = null) {
+  return buildStorybookRulesAuthorNoteMessage(userText, conv);
+}
+
+function applyStorybookRulesAtAuthorNoteDepth(history = [], userText = '', conv = null) {
+  const msg = buildStorybookRulesAuthorNoteMessage(userText, conv);
+  if (!msg?.content) return Array.isArray(history) ? history : [];
+  return insertMessageByDepth(history, msg, EU_STORYBOOK_RULE_AUTHOR_NOTE_DEPTH);
 }
 
 function clearStorybookRulesByBook({ storybookUid = '', storybookTitle = '' } = {}) {
@@ -9586,12 +9705,13 @@ const EUAdapter = {
         finishReason === 'length' &&
         streamHealthy &&
         (rawFirstPass.length >= 480 || estReplyTk >= Math.floor(acBudget.targetTokens * 0.82));
-      const needsContinuation =
+      const needsLegacyContinuation =
         canEuAutoContinueSecondRequest() &&
         !longEnoughStop &&
         !(finishReason === 'stop' && streamHealthy && !looksReplyIncomplete(finalReply)) &&
         shouldAutoContinueReply(finalReply, 0, rawStorage);
-      if (needsContinuation) {
+      const needsTailRepair = looksReplyIncomplete(finalReply) || looksReplyIncomplete(rawStorage);
+      if (needsLegacyContinuation) {
         if (bubbleEl) {
           const vis = euFormatAssistantForDisplay(rawStorage);
           bubbleEl.innerHTML = `${euFormatTextToDisplayHtml(vis) || escapeHtml(vis).replace(/\r?\n/g, '<br>')}<span class="eu-continue-tail">${euGetTypingIndicatorHtml()}</span>`;
@@ -9621,6 +9741,25 @@ const EUAdapter = {
           bubbleEl?.querySelector('.eu-continue-tail')?.remove();
           bubbleEl?.querySelector('.streaming-cursor')?.remove();
         }
+      } else if (needsTailRepair) {
+        if (bubbleEl) {
+          euPaintContinueBubbleContent(bubbleEl, rawStorage, '', { showTyping: true });
+        }
+        try {
+          rawStorage = await euAppendIncompleteAssistantTail(
+            speakerName,
+            rawStorage,
+            conv.messages,
+            { bubbleEl, maxPasses: 3, timeoutMs: 40000 },
+          );
+          finalReply = sanitizeAssistantMessageForStorage(rawStorage);
+          finalReply = recoverNarrationIfGutted(rawFirstPass, finalReply);
+        } catch (tailErr) {
+          console.warn('[EU] incomplete tail repair skipped', tailErr?.message || tailErr);
+        } finally {
+          bubbleEl?.querySelector('.eu-continue-tail')?.remove();
+          bubbleEl?.querySelector('.streaming-cursor')?.remove();
+        }
       }
       let polished = await regenerateDialogueOnlyIfNeeded(
         finalReply,
@@ -9640,7 +9779,10 @@ const EUAdapter = {
         );
         if (zhFix && !isModelGibberishCollapse(zhFix)) polished = zhFix;
       }
-      rawStorage = collapseNearDuplicateParagraphs(String(polished || rawStorage || ''));
+      rawStorage = euPreserveStreamRawForStorage(
+        rawFirstPass,
+        collapseNearDuplicateParagraphs(String(polished || finalReply || rawStorage || '')),
+      );
       const visibleAfterPost = euFormatAssistantForDisplay(rawStorage);
       if (!visibleAfterPost.trim() && euCountCjkChars(rawStorage) < 6) {
         throw new Error('RP输出为空（后处理后）');
@@ -9654,10 +9796,7 @@ const EUAdapter = {
         : euFormatAssistantForDisplay(rawStorage);
       if (streamDeltaCount > 0 && bubbleEl) {
         bubbleEl.querySelector('.streaming-cursor')?.remove();
-        if (!euDisplayRoughlySame(streamVisibleBaseline, displayFinal)) {
-          bubbleEl.classList.add('eu-readable-prose');
-          bubbleEl.innerHTML = euFormatTextToDisplayHtml(displayFinal) || escapeHtml(displayFinal).replace(/\r?\n/g, '<br>');
-        }
+        euUpdateAssistantBubblePreferAppend(bubbleEl, streamVisibleBaseline, rawStorage);
       } else {
         await renderAssistantPseudoStream(speakerName, rawStorage, { typingEl, bubbleEl, tickMs: 3 });
       }
@@ -10328,6 +10467,7 @@ function enterGuestApp(opts = {}) {
   loadGlobalSettingSelection();
   ensureWorldChatLayoutSync();
   void euFetchMallCapabilities();
+  euUpdatePrivateStorybookUploadNavVisibility();
   updateDevModeUi();
   syncSettingsUiFromPrefs();
   syncSidebarAvatarFromProfile();
@@ -10418,7 +10558,9 @@ function euEnterAppDeferredInit() {
   } catch {
     /* ignore */
   }
-  void euSyncMallBrowserStateAfterLogin({ lite: true });
+  void euSyncMallBrowserStateAfterLogin({ lite: true }).then(() => {
+    void euSyncPrivateStorybooksFromServer();
+  });
 }
 
 function enterApp(username, opts = {}) {
@@ -10491,6 +10633,7 @@ function enterApp(username, opts = {}) {
   state.worldChatName = '';
   ensureWorldChatLayoutSync();
   void euFetchMallCapabilities();
+  euUpdatePrivateStorybookUploadNavVisibility();
   void euSyncDevModeFromServer().then((active) => {
     state.devModeEnabled = active === true;
     updateDevModeUi();
@@ -10514,13 +10657,15 @@ function enterApp(username, opts = {}) {
     setTimeout(() => {
       void euSyncMallBrowserStateAfterLogin({ lite: true }).then(() => {
         euRefreshAcquiredLibrariesFromStorage();
-        try {
-          if (document.getElementById('page-storybook')?.classList.contains('active')) {
-            void filterStorybooks();
+        void euSyncPrivateStorybooksFromServer().then(() => {
+          try {
+            if (document.getElementById('page-storybook')?.classList.contains('active')) {
+              void filterStorybooks();
+            }
+          } catch {
+            /* ignore */
           }
-        } catch {
-          /* ignore */
-        }
+        });
       });
     }, 500);
     return;
@@ -11298,6 +11443,13 @@ function euDevRowHasRegexRules(row) {
 
 function euStorybookNeedsFullHydrate(uid, row) {
   const u = String(uid || '').trim();
+  if (u.startsWith('eu-private-')) {
+    if (!row || row.euHeavyBlob === 1) return true;
+    const greet = String(getStorybookGreeting(row) || '').trim();
+    if (!greet || euIsStubStorybookOpening(greet)) return true;
+    if (euNeedsMallDescRepair(String(row.desc || ''))) return true;
+    return false;
+  }
   if (!u.startsWith('public-')) {
     return !row || row.euHeavyBlob === 1;
   }
@@ -11337,6 +11489,17 @@ async function euHydrateStorybookForChat(bookOrUid) {
         await euFetchAndMergePublicMallResource(pid, uid);
       } catch (e) {
         console.warn('[EU] hydrate public resource', e?.message || e);
+      }
+      devIdx = euFindDevItemIndexByUid(uid);
+    }
+  } else if (uid.startsWith('eu-private-')) {
+    const pid = euPrivateStorybookIdFromUid(uid);
+    const row = devIdx >= 0 ? devItems[devIdx] : null;
+    if (euStorybookNeedsFullHydrate(uid, row) && pid) {
+      try {
+        await euFetchAndMergePrivateStorybook(pid, uid);
+      } catch (e) {
+        console.warn('[EU] hydrate private storybook', e?.message || e);
       }
       devIdx = euFindDevItemIndexByUid(uid);
     }
@@ -12145,6 +12308,83 @@ function recoverNarrationIfGutted(raw, sanitized) {
     if (rp && !isReasoningLikeText(rp) && rp.length > outS.length) return rp;
   }
   return outS;
+}
+
+/** 流式首轮 raw 优先：后处理不得把已展示长文整段替换成短稿。 */
+function euPreserveStreamRawForStorage(streamRaw, candidate) {
+  const raw = String(streamRaw || '').trim();
+  const cand = String(candidate || '').trim();
+  if (!raw) return cand;
+  if (!cand) return recoverNarrationIfGutted(raw, sanitizeRpReply(raw) || raw);
+  if (cand.length >= raw.length * 0.85) return cand;
+  const head = Math.min(96, raw.length, cand.length);
+  if (head >= 32 && raw.slice(0, head) === cand.slice(0, head) && cand.length >= raw.length * 0.65) return cand;
+  const rescued = recoverNarrationIfGutted(raw, sanitizeRpReply(raw) || raw);
+  return rescued.length >= cand.length ? rescued : cand;
+}
+
+function euUpdateAssistantBubblePreferAppend(bubbleEl, streamDisplayBaseline, finalRaw) {
+  if (!bubbleEl) return;
+  const prev = String(streamDisplayBaseline || '').trim();
+  const nextDisplay = euFormatAssistantForDisplay(finalRaw);
+  if (!nextDisplay.trim()) return;
+  if (!prev.trim() || euDisplayRoughlySame(prev, nextDisplay)) {
+    bubbleEl.classList.add('eu-readable-prose');
+    bubbleEl.innerHTML = euFormatBubbleHtmlFromRaw(finalRaw);
+    return;
+  }
+  const prevN = prev.replace(/\s+/g, '');
+  const nextN = nextDisplay.replace(/\s+/g, '');
+  if (nextN.startsWith(prevN.slice(0, Math.min(prevN.length, 64)))) {
+    bubbleEl.classList.add('eu-readable-prose');
+    bubbleEl.innerHTML = euFormatBubbleHtmlFromRaw(finalRaw);
+    return;
+  }
+  const mergedRaw = mergeContinuationReply(prev, nextDisplay);
+  bubbleEl.classList.add('eu-readable-prose');
+  bubbleEl.innerHTML = euFormatBubbleHtmlFromRaw(mergedRaw);
+}
+
+/** 断句处逐句补全（只追加，不重写整段）；用于流式未自然收束时。 */
+async function euAppendIncompleteAssistantTail(speakerName, rawStorage, history, opts = {}) {
+  let body = String(rawStorage || '').trim();
+  if (!body || !looksReplyIncomplete(body)) return body;
+  const maxPasses = Math.max(1, Math.min(4, Number(opts.maxPasses || 3)));
+  for (let pass = 0; pass < maxPasses; pass += 1) {
+    if (!looksReplyIncomplete(body)) break;
+    const excerptLen = 3200;
+    const excerpt = body.length > excerptLen ? body.slice(-excerptLen) : body;
+    const prompt = [
+      '【接续补句】上段 assistant 在断句处被截断。只输出需要紧跟其后新增的 1～2 句中文正文。',
+      '禁止重复前文已有句子，禁止从头重写整段，禁止替用户发言，禁止解释与标题。',
+      '',
+      '--- 断点前文（勿复述）---',
+      excerpt,
+    ].join('\n');
+    let chunk = '';
+    try {
+      const reply = await requestAiReply(prompt, {
+        charName: speakerName,
+        history: Array.isArray(history) ? history : [],
+        allowAutoContinue: false,
+        manualContinue: true,
+        skipReplyPostProcess: true,
+        timeoutMs: Math.max(28000, Number(opts.timeoutMs || 38000)),
+      });
+      chunk = sanitizeRpReply(String(reply?.rawReply || reply?.reply || '').trim());
+    } catch (err) {
+      console.warn('[EU] incomplete tail append skipped', err?.message || err);
+      break;
+    }
+    if (!chunk) break;
+    const merged = mergeContinuationReply(body, chunk);
+    if (!merged || merged === body) break;
+    body = merged;
+    if (opts.bubbleEl) {
+      euPaintContinueBubbleContent(opts.bubbleEl, body, '', { streaming: false });
+    }
+  }
+  return body;
 }
 
 /** 基线极短（如只吐「她」）时，续写合并只要带来有效增长就接受，避免误杀于 delta&lt;24。 */
@@ -16157,7 +16397,7 @@ function dismissDevBulkDeleteToast() {}
         <button class="chat-tools-item" type="button" data-eu-action="continue" onclick="handleWorldChatContinue(event)"><span class="icon">➤</span><span>续写</span></button>
       </div>
       <div id="chat-ai-assist-panel" class="chat-ai-assist-panel" aria-hidden="true">
-        <div class="chat-ai-assist-title">AI帮答：五档文风随机抽三档，各生成一条用户台词（点草稿填入，不发送）</div>
+        <div class="chat-ai-assist-title">AI帮答：根据<strong>上一条 AI 回复</strong>替你写用户下一句（五档文风随机三稿，点选填入，不发送、不重写 AI 气泡）</div>
         <div id="chat-ai-assist-body" class="chat-ai-assist-hint">点击左侧 💡 生成草稿</div>
       </div>
       <div id="eu-generation-status" class="eu-generation-status" aria-live="polite" aria-hidden="true"></div>
@@ -16293,6 +16533,7 @@ function closeAuthorRulePanel() {
 
 async function toggleAiAssistPanel(event) {
   event?.stopPropagation?.();
+  event?.preventDefault?.();
   const panel = document.getElementById('chat-ai-assist-panel');
   const trigger = document.getElementById('chat-ai-assist-trigger');
   if (!panel || !trigger) return;
@@ -16300,6 +16541,10 @@ async function toggleAiAssistPanel(event) {
   closeChatToolsMenu();
   if (!opening) {
     closeAiAssistPanel();
+    return;
+  }
+  if (worldMessageActionBusy) {
+    showToast('请等待当前生成/重新生成完成后再使用 AI 帮答', 'warning');
     return;
   }
   trigger.classList.add('active');
@@ -16350,16 +16595,27 @@ function buildAiAssistMessages(ctx, preset) {
       role: m.role === 'assistant' ? 'assistant' : 'user',
       content: String(m.content || '').slice(0, 420),
     }));
+  const latestAssistant = [...history].reverse().find((m) => m.role === 'assistant');
+  const latestUser = [...history].reverse().find((m) => m.role === 'user');
+  const anchorAi = String(latestAssistant?.content || '').trim();
+  const anchorUser = String(latestUser?.content || '').trim();
   const system = [
-    '你是「用户代答」助手：只为用户草拟下一句要在聊天里发送的中文台词。',
-    '硬性要求：只输出一条台词；28～72 字；自然口语；可含轻微动作/神态；禁止英文、JSON、编号、解释、代码块、世界书原文照抄。',
+    '你是「用户代答」助手：根据角色/AI 刚才的最新回复，替玩家（用户）草拟下一句要发送的中文台词。',
+    '硬性要求：只输出一条用户台词；28～72 字；第一人称或对话口吻；可含轻微动作/神态；禁止英文、JSON、编号、解释、代码块。',
+    '禁止替 AI/角色续写剧情，禁止复述整段 AI 原文，禁止用「根据你的回复我将…」这类元话术。',
     `语气参考「${preset?.label || '现代风'}」：${styleHint}。`,
-    '不要写文风名称，不要复述系统设定。',
   ].join('\n');
+  const tailUser = [
+    anchorAi
+      ? `【角色/AI 最新回复（你要回应的对象）】\n${anchorAi.slice(0, 900)}`
+      : '（尚无 AI 回复，请根据最近对话写一句用户开场。）',
+    anchorUser ? `\n【用户上一句（仅供衔接，勿复述）】\n${anchorUser.slice(0, 240)}` : '',
+    '\n请只输出玩家下一句要发送的台词（一行正文）。',
+  ].join('');
   return normalizeStMessageOrder([
     { role: 'system', content: system },
-    ...history,
-    { role: 'user', content: '请根据上文，生成用户下一句发送草稿（仅一行正文）。' },
+    ...history.slice(-8),
+    { role: 'user', content: tailUser },
   ]);
 }
 
@@ -16438,13 +16694,13 @@ function isAiAssistDraftUsable(text) {
 }
 
 function buildAiAssistFallbackDrafts(ctx) {
-  const latestUser = [...(ctx?.history || [])].reverse().find(m => m?.role === 'user');
-  const hint = String(latestUser?.content || '').trim();
-  const shortHint = hint ? `（围绕“${hint.slice(0, 18)}”）` : '';
+  const latestAssistant = [...(ctx?.history || [])].reverse().find((m) => m?.role === 'assistant');
+  const hint = String(latestAssistant?.content || '').trim();
+  const shortHint = hint ? `（接上刚才那段：${hint.slice(0, 20)}…）` : '';
   return [
-    `我稍微放慢语气，先把你的重点重新确认一遍${shortHint}，这样理解的话，你会觉得更贴近你现在的想法吗？`,
-    `我顺着这个方向往前推一步${shortHint}，可以把下一段场景、人物动作和情绪转折一起铺开，你希望我先从哪一块写起？`,
-    `我带一点情绪地接住你这句话${shortHint}，让表达更有画面和呼吸感，如果你愿意，我可以直接给你一版更有代入感的完整回应。`,
+    `……${shortHint} 这到底是怎么回事？你先别吓我，说清楚现在门外是什么情况。`,
+    `我下意识抓紧你的袖子，压低声音问：${shortHint ? '刚才那一下' : '刚才'}你听到了吗？我们接下来怎么办？`,
+    `我盯着你的眼睛，尽量让自己冷静下来：${shortHint ? '不管外面怎样' : '不管发生什么'}，先告诉我你现在最担心的是什么？`,
   ];
 }
 
@@ -17607,7 +17863,11 @@ function trimMessageContentByBudget(content, maxTokens) {
 function selectHistoryWithinContextBudget(frontMessages, userText, historyRows, liveProfile, hints = {}) {
   const lp = liveProfile && typeof liveProfile === 'object' ? liveProfile : {};
   const maxContext = Math.max(1024, Number(lp.max_context || 4096));
-  const maxOut = Math.max(64, Number(lp.max_tokens) || 512);
+  const acBudget = hints.manualContinue === true ? null : euComputeAutoContinueBudget();
+  const maxOut =
+    acBudget && acBudget.enabled && acBudget.maxTokens > 0
+      ? acBudget.maxTokens
+      : Math.max(64, Number(lp.max_tokens) || 512);
   // 手动续写 user 轮含 ~3500 字结尾摘录，需更大预留避免 history 被挤没
   const reserve = hints.manualContinue === true ? 560 : 320;
   const front = (Array.isArray(frontMessages) ? frontMessages : [])
@@ -17650,8 +17910,8 @@ function buildBudgetedMessages(runtimeSystemMessages, history, userText, livePro
   const globalSettingsSystem = buildGlobalSettingsSystemMessage();
   const scopedSettingsSystem = buildStorybookScopedSettingsSystemMessage();
   const manualContinue = hints.manualContinue === true;
-  const autoContinueSystem = manualContinue ? null : buildAutoContinueSystemMessage(userText);
-  const storybookRuleSystem = autoContinueSystem ? null : getStorybookRuleSystemMessage(userText);
+  const acBudget = manualContinue ? null : euComputeAutoContinueBudget();
+  const hasCharControl = Boolean(acBudget && acBudget.enabled && acBudget.maxTokens > 0);
   if (EU_ST_NATIVE_CHAT_STACK) {
     let safeHistory = sanitizeHistoryForRequest(scrubRpHistoryForToxicMicroReplies(history));
     if (safeHistory.length && String(safeHistory[safeHistory.length - 1]?.role || '') === 'user') {
@@ -17669,12 +17929,10 @@ function buildBudgetedMessages(runtimeSystemMessages, history, userText, livePro
     if (virtualLoverMode) {
       optionalSystem.push({ role: 'system', content: EU_VIRTUAL_LOVER_STYLE_SYSTEM, identifier: 'euVirtualLoverStyle' });
     }
-    if (autoContinueSystem?.content) optionalSystem.push(autoContinueSystem);
     const writingStyleSystem = virtualLoverMode ? null : buildWritingStyleSystemMessage();
     if (writingStyleSystem?.content) optionalSystem.push(writingStyleSystem);
-    if (!virtualLoverMode && storybookRuleSystem?.content) optionalSystem.push(storybookRuleSystem);
     if (!manualContinue && compactDirective) {
-      const wbLead = autoContinueSystem?.content
+      const wbLead = hasCharControl
         ? '【上下文摘录（仅供参考；篇幅以「字符控制」为准）】\n'
         : '【上下文摘录（卡面/世界书数据，非文风指令）】\n';
       optionalSystem.push({
@@ -17691,9 +17949,12 @@ function buildBudgetedMessages(runtimeSystemMessages, history, userText, livePro
     const writingStyleLengthNudge = virtualLoverMode ? null : buildWritingStyleLengthNudgeMessage();
     if (writingStyleLengthNudge?.content) optionalSystem.push(writingStyleLengthNudge);
     const historySlice = selectHistoryWithinContextBudget(optionalSystem, userText, safeHistory, liveProfile, { manualContinue });
+    const convRef = typeof getActiveConversation === 'function' ? getActiveConversation() : null;
+    let historyWithAuthorNote = applyStorybookRulesAtAuthorNoteDepth(historySlice, userText, convRef);
+    historyWithAuthorNote = applyCharacterControlBeforeUserTurn(historyWithAuthorNote, userText, { manualContinue });
     const coreMessages = [
       ...optionalSystem,
-      ...historySlice,
+      ...historyWithAuthorNote,
       { role: 'user', content: String(userText || '') },
     ];
     return normalizeStMessageOrder(coreMessages);
@@ -17703,7 +17964,6 @@ function buildBudgetedMessages(runtimeSystemMessages, history, userText, livePro
     if (hints.degenerateRetry) {
       strictSystem.push({ role: 'system', content: EU_DEGENERATE_RETRY_SYSTEM, identifier: 'euDegenerateRetry' });
     }
-    if (storybookRuleSystem?.content) strictSystem.push({ role: 'system', content: storybookRuleSystem.content, identifier: 'euStorybookRules' });
     const crossoverStrict = buildCrossoverCharacterSystemMessage();
     if (crossoverStrict?.content) {
       strictSystem.push({ role: 'system', content: crossoverStrict.content, identifier: 'euCrossoverCharacters' });
@@ -17716,6 +17976,9 @@ function buildBudgetedMessages(runtimeSystemMessages, history, userText, livePro
       role: h.role === 'assistant' ? 'assistant' : 'user',
       content: String(h.content || ''),
     }));
+    const strictConv = typeof getActiveConversation === 'function' ? getActiveConversation() : null;
+    strictHistory = applyStorybookRulesAtAuthorNoteDepth(strictHistory, userText, strictConv);
+    strictHistory = applyCharacterControlBeforeUserTurn(strictHistory, userText, { manualContinue: false });
     const strictMessages = [
       ...strictSystem,
       ...(Array.isArray(runtimeSystemMessages) ? runtimeSystemMessages : []).map(m => ({ role: m.role, content: m.content })),
@@ -17734,9 +17997,6 @@ function buildBudgetedMessages(runtimeSystemMessages, history, userText, livePro
   const sysExamples = [];
   if (hints.degenerateRetry) {
     sysCore.push({ role: 'system', content: EU_DEGENERATE_RETRY_SYSTEM, identifier: 'euDegenerateRetry' });
-  }
-  if (storybookRuleSystem?.content) {
-    sysCore.push({ role: 'system', content: storybookRuleSystem.content, identifier: 'euStorybookRules' });
   }
   const crossoverFallback = buildCrossoverCharacterSystemMessage();
   if (crossoverFallback?.content) {
@@ -17771,7 +18031,10 @@ function buildBudgetedMessages(runtimeSystemMessages, history, userText, livePro
   }
 
   // Add history from newest to oldest until budget is filled.
-  const safeHistory = scrubRpHistoryForToxicMicroReplies(Array.isArray(history) ? history : []);
+  let safeHistory = scrubRpHistoryForToxicMicroReplies(Array.isArray(history) ? history : []);
+  const legacyConv = typeof getActiveConversation === 'function' ? getActiveConversation() : null;
+  safeHistory = applyStorybookRulesAtAuthorNoteDepth(safeHistory, userText, legacyConv);
+  safeHistory = applyCharacterControlBeforeUserTurn(safeHistory, userText, { manualContinue: hints.manualContinue === true });
   const selectedHistory = [];
   for (let i = safeHistory.length - 1; i >= 0; i -= 1) {
     const h = safeHistory[i];
@@ -17966,7 +18229,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260523-shared-api-cm-sync-v142';
+const EU_CLIENT_BUILD_STAMP = '20260524-gentle-glm51-ready-v148';
 /** 游客模式：故事书对话单会话内 user 消息上限（不含隐藏的开场 kickoff）。 */
 const EU_GUEST_MAX_USER_MESSAGES = 10;
 
@@ -18027,7 +18290,7 @@ function updateWorldChatFeatureStatus() {
   const rule = getActiveAuthorRuleConfig();
   const storyRuleCount = Array.isArray(rule.storybookRules) ? rule.storybookRules.length : 0;
   const acFeat = rule.storybookAutoContinue || normalizeStorybookAutoContinue({});
-  const acFeatText = acFeat.enabled ? `续写：开·${acFeat.targetTokens}tk` : '续写：关';
+  const acFeatText = acFeat.enabled ? `字控：开·${acFeat.targetTokens}tk` : '字控：关';
   const ctxT = normalizeEuContextTokens(state.runtimePrefs?.contextTokens, state.runtimePrefs?.contextUnlock === true);
   const ctxUn = state.runtimePrefs?.contextUnlock === true;
   const ruleText = `上下文${ctxT}${ctxUn ? '（已解锁）' : ''}`;
@@ -18054,7 +18317,7 @@ function updateWorldChatFeatureStatus() {
   const wsApiTitle = wsRoute ? `${wsRoute.stChatSource}/${wsRoute.stModel}` : '账号默认';
   const wsTitleApi = euCanShowWritingStyleApiDetails() ? `（API ${wsApiTitle}）` : '';
   el.textContent = `${ruleText} | 新增规则：${storyRuleCount} | ${wsText} | ${acFeatText} | ${crText} | 设定集：${settingSummary} | ${storybookBound} | ${regexText} | ${wiText} | ${personaText}`;
-  el.title = `${ruleText}；新增规则：${storyRuleCount}；文风：${wsPreset.label}${wsTitleApi}；自动续写：${acFeat.enabled ? `已启用（目标 ${acFeat.targetTokens} tk：整条气泡估算 token < 目标则续写，最多嵌套 2 次；与酒馆 shouldAutoContinue 一致；补全 API ${acFeat.allowChatCompletions ? '允许' : '禁止'}）` : '未启用'}；添加角色：${cr.enabled ? `开（${cr.cardUids?.length || 0} 张角色卡）` : '关'}；设定集：手动全局 ${manualGlobalCount}；书域联动（随当前故事书、且未与全局重复）注入 ${scopedPromptCount}；故事书绑定：${state.activeStorybookUid ? state.activeStorybookTitle || state.activeStorybookUid : '无'}；正则：${state.regexLoaded ? '开启' : '关闭'}；世界书命中：注入 ${wiStats.injected} / 命中 ${wiStats.matched} / 总条目 ${wiStats.total}；用户画像：${persona ? persona.name : '未设置'}`;
+  el.title = `${ruleText}；新增规则：${storyRuleCount}；文风：${wsPreset.label}${wsTitleApi}；字符控制：${acFeat.enabled ? `已启用（目标 ${acFeat.targetTokens} tk；单轮 max_tokens + 紧贴输入指令，不靠续写补长）` : '未启用'}；添加角色：${cr.enabled ? `开（${cr.cardUids?.length || 0} 张角色卡）` : '关'}；设定集：手动全局 ${manualGlobalCount}；书域联动（随当前故事书、且未与全局重复）注入 ${scopedPromptCount}；故事书绑定：${state.activeStorybookUid ? state.activeStorybookTitle || state.activeStorybookUid : '无'}；正则：${state.regexLoaded ? '开启' : '关闭'}；世界书命中：注入 ${wiStats.injected} / 命中 ${wiStats.matched} / 总条目 ${wiStats.total}；用户画像：${persona ? persona.name : '未设置'}`;
 }
 
 function markStFailure(note = '') {
@@ -18174,7 +18437,7 @@ const EU_ST_PARITY_NOTES = [
   '提示词栈：酒馆在主界面按角色卡 + 预设 prompt_order + 作者注释/越狱/示例对话等完整装配；EU 在 EU_ST_NATIVE_CHAT_STACK 下可附带卡面/世界书「上下文摘录」与用户在 EU 内配置的新增规则/设定集，不再注入 EU 全局叙事文风条。',
   '世界书：酒馆走 SillyTavern 世界书匹配与注入预算；EU 使用 buildStorybookWorldInfoText / 多轮搜索与本地规则，命中条目与顺序常与酒馆不一致。',
   '聊天历史：酒馆来自已保存聊天文件与 UI 状态；EU 来自浏览器 conversationStore，并经净化与上下文预算截断；两边若不是同一份聊天记录，模型看到的上文必然不同。',
-  '生成参数：EU 经 /api/backends/chat-completions/generate 发送；max_tokens 与酒馆预设一致。故事书自动续写仅按「整条正文估算 token < 目标」触发续请求，对齐 script.js shouldAutoContinue。',
+  '生成参数：EU 经 /api/backends/chat-completions/generate 发送。字符控制开启时首轮 max_tokens 按目标区间设置（不超过预设单轮上限），指令紧贴本轮 user 输入；不靠续写第二轮补长。',
   '后处理：EU 侧有流式展示与 sanitize；酒馆为另一套继续生成与界面后处理。',
 ];
 
@@ -18272,6 +18535,12 @@ function dumpEuStorybookPromptAudit(seedUserText = '') {
     firstMesPreview: firstMes.slice(0, 320),
     storyRulesCount: rules.length,
     storyRulesPreview: rules.slice(0, 6),
+    storyRulesAuthorNoteDepth: EU_STORYBOOK_RULE_AUTHOR_NOTE_DEPTH,
+    storyRulesAuthorNotePreview: buildStorybookRulesAuthorNoteContent(conv, seed).slice(0, 400),
+    characterControlEnabled: Boolean(euComputeAutoContinueBudget().enabled && euComputeAutoContinueBudget().maxTokens > 0),
+    characterControlBudget: euComputeAutoContinueBudget(),
+    characterControlInjectionPreview: buildCharacterControlInjectionContent(seed).slice(0, 420),
+    characterControlUsesSecondRequest: canEuAutoContinueSecondRequest(),
     manualGlobalSettingUids: typeof getManualGlobalSettingUids === 'function' ? getManualGlobalSettingUids() : [],
     storybookScopedSettingUidsForPrompt:
       typeof getStorybookScopedSettingUidsForPrompt === 'function' ? getStorybookScopedSettingUidsForPrompt() : [],
@@ -19257,6 +19526,7 @@ function euDisplayRoughlySame(a, b) {
 function shouldAutoContinueReply(fullMergedReply = '', depth = 0, rawMergedReply = '') {
   if (depth >= 2) return false;
   const budget = euComputeAutoContinueBudget();
+  if (budget.enabled && budget.targetTokens > 0) return false;
   if (!budget.enabled || !budget.allowChatCompletions) return false;
   if (budget.maxTokens <= 0) return false;
   const body = String(fullMergedReply || rawMergedReply || '').trim();
@@ -19375,7 +19645,8 @@ function collapseNearDuplicateParagraphs(raw) {
     if (pre >= 40 && prev.includes(c.slice(0, pre))) continue;
     const prp = Math.min(120, prev.length);
     if (prp >= 40 && c.includes(prev.slice(0, prp))) {
-      if (c.length > prev.length) out[out.length - 1] = c;
+      const suffix = c.length > prev.length ? c.slice(prev.length).trim() : '';
+      if (suffix) out[out.length - 1] = `${prev}\n${suffix}`.trim();
       continue;
     }
     out.push(c);
@@ -19449,7 +19720,10 @@ async function requestAiReplyStream(userText, options = {}, onDelta) {
   );
   stPayload = euSanitizeStPayloadForBackendSource(stPayload);
   assertValidXaiModelOrThrow(stPayload, liveProfile?.sourcePreset || '');
-  euApplyLiveProfileMaxTokens(stPayload, liveProfile);
+  euApplyGenerationMaxTokens(stPayload, liveProfile, {
+    manualContinue: options.manualContinue === true,
+    autoContinueDepth: Number(options.autoContinueDepth || 0),
+  });
   stPayload.stream = true;
   pushEuAlignmentProbe(buildEuAlignmentProbe('stream_request', stPayload, messages, liveProfile));
 
@@ -19655,7 +19929,10 @@ async function requestAiReply(userText, options = {}) {
   );
   stPayload = euSanitizeStPayloadForBackendSource(stPayload);
   assertValidXaiModelOrThrow(stPayload, liveProfile?.sourcePreset || '');
-  euApplyLiveProfileMaxTokens(stPayload, liveProfile);
+  euApplyGenerationMaxTokens(stPayload, liveProfile, {
+    manualContinue: options.manualContinue === true,
+    autoContinueDepth: autoContinueDepth,
+  });
   pushEuAlignmentProbe(buildEuAlignmentProbe('non_stream_request', stPayload, messagesNs, liveProfile));
   updateWorldChatRuntimeStatus();
   if (EU_ALLOW_DIRECT_LLAMA_FALLBACK && shouldForceDirectLlama()) {
@@ -20800,6 +21077,7 @@ async function euFetchMallCapabilities() {
     };
     euMallCapabilitiesLoaded = true;
     updateEuMallManagerNavVisibility();
+    euUpdatePrivateStorybookUploadNavVisibility();
     return true;
   } catch {
     euMallCapabilities = {
@@ -20812,6 +21090,7 @@ async function euFetchMallCapabilities() {
       handle: String(state.currentUser || '').trim(),
       roles: [],
     };
+    euUpdatePrivateStorybookUploadNavVisibility();
     return false;
   }
 }
@@ -21736,6 +22015,14 @@ function getAcquiredLibraryItems(typeFilter) {
     if (!item && Array.isArray(devItems) && devItems.length) {
       const devIdx = euFindDevItemIndexByUid(u);
       if (devIdx >= 0) item = euMapDevItemToMallItemLight(devItems[devIdx]);
+    }
+    if (!item && u.startsWith('eu-private-')) {
+      const meta = metaByUid.get(u);
+      if (meta) item = euMallItemFromAcquiredMeta(meta);
+      if (!item) {
+        const devIdx = euFindDevItemIndexByUid(u);
+        if (devIdx >= 0) item = euMapDevItemToMallItemLight(devItems[devIdx]);
+      }
     }
     if (!item && u.startsWith('public-')) {
       const meta = metaByUid.get(u);
@@ -24528,6 +24815,293 @@ function updateEuMallManagerNavVisibility() {
   const show = euMallCapabilities.canPublish === true && state.devModeEnabled !== true;
   el.style.display = show ? '' : 'none';
   if (!show) el.classList.remove('active');
+  euUpdatePrivateStorybookUploadNavVisibility();
+}
+
+/** 侧栏「上传世界书」：仅已登录非游客显示。 */
+function euUpdatePrivateStorybookUploadNavVisibility() {
+  const el = document.getElementById('eu-upload-worldbook-nav');
+  if (!el) return;
+  const guest = isEuGuestMode() || !String(state.currentUser || '').trim() || state.currentUser === 'guest';
+  el.style.display = guest ? 'none' : '';
+}
+
+let euPrivateStorybookUploadBusy = false;
+
+function euPrivateStorybookUidFromId(id) {
+  const pid = String(id || '').trim();
+  if (!pid) return '';
+  return pid.startsWith('eu-private-') ? pid : `eu-private-${pid}`;
+}
+
+function euPrivateStorybookIdFromUid(uid) {
+  const u = String(uid || '').trim();
+  if (!u.startsWith('eu-private-')) return '';
+  return u.slice('eu-private-'.length);
+}
+
+async function euOpenPrivateStorybookUploadPicker() {
+  if (isEuGuestMode() || !String(state.currentUser || '').trim() || state.currentUser === 'guest') {
+    showToast('请先登录后再上传世界书', 'warning');
+    return;
+  }
+  if (euPrivateStorybookUploadBusy) {
+    showToast('正在处理上一本，请稍候', 'info');
+    return;
+  }
+  document.getElementById('eu-private-storybook-upload-file')?.click();
+}
+
+async function euParsePrivateStorybookUploadFile(file) {
+  const ext = (String(file?.name || '').split('.').pop() || '').toLowerCase();
+  let imported = null;
+  if (ext === 'json') {
+    const text = await readFileAsText(file);
+    const parsed = euSafeJsonParse(text, null);
+    if (!parsed || typeof parsed !== 'object') throw new Error('JSON 文件格式无效');
+    imported = normalizeImportedItem(parsed);
+  } else if (ext === 'png') {
+    const [dataUrl, buf] = await Promise.all([
+      readFileAsDataURL(file),
+      readFileAsArrayBuffer(file),
+    ]);
+    const embedded = await parsePngEmbeddedJson(buf);
+    imported = normalizeImportedItem(embedded || {
+      title: file.name.replace(/\.[^.]+$/, ''),
+      desc: 'PNG 导入（未检测到内嵌 JSON）',
+    });
+    imported.img = dataUrl;
+  } else {
+    throw new Error('仅支持 .json 或 .png（酒馆故事书/角色卡导出）');
+  }
+  imported.type = 'storybook';
+  imported.source = 'private';
+  imported.sourceFileName = file.name;
+  euAugmentStorybookImportMeta(imported);
+  return normalizeDevItemShape(imported);
+}
+
+async function euFetchAndMergePrivateStorybook(privateId, uidHint = '') {
+  const id = String(privateId || '').trim();
+  if (!id) return false;
+  const u = euPrivateStorybookUidFromId(uidHint || id);
+  try {
+    const res = await stApiRequest('GET', `/api/eu/private-storybooks/${encodeURIComponent(id)}`, {}, 90000);
+    if (!res.ok) return false;
+    const j = await euSafeHttpJson(res, { maxBytes: 1_200_000 });
+    const payload = j?.item && typeof j.item === 'object' ? j.item : null;
+    if (!payload) return false;
+    const rawFull = payload.raw && typeof payload.raw === 'object' ? payload.raw : payload;
+    const rawLean = euRawLeanForDescAndStorage(rawFull);
+    const fmRaw = euExtractCardOpeningText(rawLean) || String(payload.first_mes || '').trim();
+    const fm = euSanitizeStorybookOpeningText(fmRaw) || '';
+    const descBuilt = rawLean ? euBuildCardListDescription(rawLean) : '';
+    const descFromApi = String(payload.desc || '').trim();
+    let desc = descBuilt && descBuilt !== '暂无简介' ? descBuilt : descFromApi;
+    let img = String(payload.thumb || payload.img || '').trim();
+    if (img) img = normalizeStoredImagePath(img);
+    const regexRules = extractRegexRules(rawLean || rawFull);
+    let idx = devItems.findIndex((d) => String(d.euPrivateId || '').trim() === id || String(d.uid || '').trim() === u);
+    const patch = {
+      title: String(payload.title || '').trim(),
+      desc,
+      first_mes: fm,
+      raw: null,
+      regexRules,
+      tags: payload.tags,
+      adultContent: payload.adultContent === true,
+      type: 'storybook',
+      euPrivateId: id,
+      uid: u,
+      source: 'private',
+      img,
+    };
+    let merged = idx >= 0
+      ? normalizeDevItemShape({ ...devItems[idx], ...patch })
+      : normalizeDevItemShape({ id: `priv_${id}`, ...patch });
+    merged = await euSlimDevRowForLocalStorageIfNeeded(
+      rawLean ? { ...merged, raw: rawLean } : merged,
+    );
+    if (idx >= 0) devItems[idx] = merged;
+    else devItems.push(merged);
+    euInvalidateDevItemsUidIndex();
+    await euPersistDevItemsUpsert(merged, { skipMigrate: true });
+    if (getAcquiredSet().has(u)) {
+      try {
+        const mallRow = mapDevItemToMallItem(devItems[euFindDevItemIndexByUid(u)] || merged);
+        if (mallRow) euUpsertAcquiredMetaFromItem({ ...mallRow, source: 'private' });
+      } catch {
+        /* ignore */
+      }
+    }
+    return true;
+  } catch (e) {
+    console.warn('[EU] euFetchAndMergePrivateStorybook', e?.message || e);
+    return false;
+  }
+}
+
+async function euDeletePrivateStorybookOnServer(privateId) {
+  const id = String(privateId || '').trim();
+  if (!id) return false;
+  try {
+    const res = await stApiRequest('DELETE', `/api/eu/private-storybooks/${encodeURIComponent(id)}`, {}, 45000);
+    if (!res.ok) {
+      const j = await euSafeHttpJson(res).catch(() => ({}));
+      console.warn('[EU] private storybook delete', res.status, j?.error || '');
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn('[EU] private storybook delete', e?.message || e);
+    return false;
+  }
+}
+
+async function euRegisterPrivateStorybookLocally(row, opts = {}) {
+  const id = String(row?.euPrivateId || row?.id || '').trim();
+  const uid = String(row?.uid || euPrivateStorybookUidFromId(id)).trim();
+  if (!id || !uid) return null;
+  const norm = normalizeDevItemShape({
+    ...row,
+    type: 'storybook',
+    source: 'private',
+    euPrivateId: id,
+    uid,
+    publicResourceId: '',
+  });
+  const setObj = getAcquiredSet();
+  setObj.add(uid);
+  const mallRow = mapDevItemToMallItem(norm);
+  euUpsertAcquiredMetaFromItem({ ...mallRow, source: 'private' });
+  persistAcquiredSet(setObj);
+  const idx = devItems.findIndex((d) => String(d.uid || '').trim() === uid || String(d.euPrivateId || '').trim() === id);
+  if (idx >= 0) devItems[idx] = norm;
+  else devItems.unshift(norm);
+  euInvalidateDevItemsUidIndex();
+  if (opts.persist !== false) {
+    try {
+      await persistDevItems({ skipMigrate: true });
+    } catch (e) {
+      console.warn('[EU] register private storybook persist', e);
+    }
+  }
+  euBumpAcquiredStorageGen();
+  return norm;
+}
+
+async function euSyncPrivateStorybooksFromServer() {
+  if (isEuGuestMode() || !String(state.currentUser || '').trim()) return;
+  try {
+    const res = await stApiRequest('GET', '/api/eu/private-storybooks', {}, 45000);
+    if (!res.ok) return;
+    const j = await euSafeHttpJson(res);
+    const items = Array.isArray(j?.items) ? j.items : [];
+    if (!items.length) return;
+    const setObj = getAcquiredSet();
+    let changed = false;
+    for (const meta of items) {
+      const uid = String(meta?.uid || '').trim();
+      if (!uid.startsWith('eu-private-')) continue;
+      if (!setObj.has(uid)) {
+        setObj.add(uid);
+        changed = true;
+      }
+      euUpsertAcquiredMetaFromItem({
+        uid,
+        type: 'storybook',
+        resourceType: 'storybook',
+        title: meta.title,
+        desc: meta.desc,
+        tags: meta.tags,
+        img: meta.thumb || meta.img,
+        adultContent: meta.adultContent === true,
+        source: 'private',
+        euPrivateId: euPrivateStorybookIdFromUid(uid),
+      });
+      const pid = euPrivateStorybookIdFromUid(uid);
+      if (pid && euFindDevItemIndexByUid(uid) < 0) {
+        devItems.push(normalizeDevItemShape({
+          id: `priv_${pid}`,
+          uid,
+          euPrivateId: pid,
+          type: 'storybook',
+          source: 'private',
+          title: meta.title,
+          desc: meta.desc,
+          tags: meta.tags,
+          img: meta.thumb || meta.img,
+          adultContent: meta.adultContent === true,
+          euHeavyBlob: 1,
+        }));
+      }
+    }
+    if (changed) persistAcquiredSet(setObj);
+    euInvalidateDevItemsUidIndex();
+  } catch (e) {
+    console.warn('[EU] euSyncPrivateStorybooksFromServer', e?.message || e);
+  }
+}
+
+async function euHandlePrivateStorybookUploadFile(input) {
+  const file = input?.files?.[0];
+  if (input) input.value = '';
+  if (!file || euPrivateStorybookUploadBusy) return;
+  if (isEuGuestMode() || !String(state.currentUser || '').trim()) {
+    showToast('请先登录后再上传', 'warning');
+    return;
+  }
+  euPrivateStorybookUploadBusy = true;
+  const fileLabel = String(file.name || '').trim() || '文件';
+  try {
+    showToast(`正在解析 ${fileLabel}…`, 'info');
+    const parsed = await euParsePrivateStorybookUploadFile(file);
+    if (!String(parsed.title || '').trim()) throw new Error('无法识别书名');
+    const descPlain = euFormatDescPlainText(parsed.desc || '');
+    if (!descPlain || descPlain === '暂无简介') {
+      throw new Error('缺少可用简介，请使用含简介或开场白的导出文件');
+    }
+    const ok = confirm(
+      `将《${parsed.title}》保存为你的私有世界书：\n\n· 仅本账号可见，不会进入公共商城\n· 会写入浏览器故事书库，并在服务器单独目录备份\n\n是否继续？`,
+    );
+    if (!ok) return;
+    const rawFull = parsed.raw && typeof parsed.raw === 'object' ? parsed.raw : null;
+    const rawLean = rawFull ? euRawLeanForDescAndStorage(rawFull) : null;
+    showToast(`正在上传《${parsed.title}》…`, 'info');
+    const res = await stApiRequest('POST', '/api/eu/private-storybooks', {
+      type: 'storybook',
+      title: parsed.title,
+      desc: parsed.desc,
+      tags: parsed.tags,
+      catalog: parsed.catalog,
+      regexRules: parsed.regexRules,
+      first_mes: parsed.first_mes,
+      raw: rawLean || rawFull,
+      img: parsed.img,
+      adultContent: parsed.adultContent === true,
+    }, 120000);
+    const j = await euSafeHttpJson(res);
+    if (!res.ok) throw new Error(j?.error || `上传失败 HTTP ${res.status}`);
+    const id = String(j?.id || '').trim();
+    if (!id) throw new Error('服务端未返回 id');
+    const item = j?.item && typeof j.item === 'object' ? j.item : {
+      ...parsed,
+      id,
+      euPrivateId: id,
+      uid: String(j?.uid || euPrivateStorybookUidFromId(id)),
+      img: j?.thumb || parsed.img,
+      source: 'private',
+    };
+    await euRegisterPrivateStorybookLocally(item);
+    await euFetchAndMergePrivateStorybook(id, item.uid);
+    refreshLinkedViews();
+    showToast(`已上传私有世界书：《${parsed.title}》`, 'success');
+    showPage('storybook');
+  } catch (e) {
+    showToast(e?.message || '上传失败', 'error');
+  } finally {
+    euPrivateStorybookUploadBusy = false;
+  }
 }
 
 function euAuthGrantRoleUiSync() {
@@ -26524,19 +27098,28 @@ async function euDeleteStorybookFromLibrary(uid, evt) {
     return;
   }
   const title = String(item.title || '').trim() || '未命名';
+  const isPrivate = u.startsWith('eu-private-') || String(item?.source || '').trim() === 'private';
   const ok = confirm(
-    `确定从「我的故事书」中删除《${title}》吗？\n将清除本账号的获取记录、本地缓存与相关对话；商城中的公共资源不会被删除。`,
+    isPrivate
+      ? `确定删除私有世界书《${title}》吗？\n将清除本机故事书库、相关对话，并删除服务器上该账号的私有备份（不进商城）。`
+      : `确定从「我的故事书」中删除《${title}》吗？\n将清除本账号的获取记录、本地缓存与相关对话；商城中的公共资源不会被删除。`,
   );
   if (!ok) return;
 
   await removeMallItemFromMyWorld(u, { allowOutsideDevPage: true, skipConfirm: true, skipToast: true });
+
+  const privateId = isPrivate ? euPrivateStorybookIdFromUid(u) : '';
+  if (privateId) {
+    await euDeletePrivateStorybookOnServer(privateId);
+  }
 
   const publicId = u.startsWith('public-') ? u.slice('public-'.length) : '';
   const removedRows = [];
   devItems = devItems.filter((d) => {
     const mappedUid = String(mapDevItemToMallItem(d).uid || '').trim();
     const pid = String(d.publicResourceId || '').trim();
-    const hit = mappedUid === u || (publicId && pid === publicId);
+    const privId = String(d.euPrivateId || '').trim();
+    const hit = mappedUid === u || (publicId && pid === publicId) || (privateId && privId === privateId);
     if (hit) removedRows.push(d);
     return !hit;
   });
@@ -26958,6 +27541,10 @@ function storybookCardHtml(item) {
   if (descRaw.length > 160) descRaw = euTruncateAtSentenceBoundary(descRaw, 160);
   const descHtml = euMallCardDescBlockHtml(item, descRaw);
   const uidJs = JSON.stringify(String(item.uid || ''));
+  const isPrivate = String(item?.uid || '').startsWith('eu-private-') || String(item?.source || '').trim() === 'private';
+  const privateBadge = isPrivate
+    ? '<span class="mall-card-tag" style="border-color:#60a5fa;color:#93c5fd;">私有上传</span>'
+    : '';
   const trashSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>';
   return `
       <div class="mall-card mall-card--storybook-lib" onclick='startStorybookChat(${uidJs})'>
@@ -26969,6 +27556,7 @@ function storybookCardHtml(item) {
           ${descHtml}
           <div class="mall-card-tags">
             ${safeTags.map(tag => `<span class="mall-card-tag">${escapeHtml(String(tag))}</span>`).join('')}
+            ${privateBadge}
           </div>
           <div class="mall-card-footer">
             <span class="mall-card-price free">查看</span>
@@ -27163,7 +27751,7 @@ async function filterStorybooks() {
     let hintExtra =
       nAcq > 0
         ? '<br><span style="font-size:13px;">已获取列表有记录但类型不匹配或已被过滤，可在商城重新获取。</span>'
-        : '<br><span style="font-size:13px;">请先在「商城」点获取；若曾获取过，稍候会自动从账号同步。</span>';
+        : '<br><span style="font-size:13px;">请先在「商城」点获取，或使用左侧「上传世界书」导入私有 JSON/PNG；若曾获取过，稍候会自动从账号同步。</span>';
     if (nWorld > 0) {
       hintExtra += `<br><span style="font-size:13px;margin-top:8px;display:inline-block;">侧栏「我的世界」仍有 ${nWorld} 条历史会话，与故事书库无关。</span>`;
       hintExtra += `<br><button type="button" class="btn-secondary" style="margin-top:12px;" onclick="void euClearMyWorldHistorySessions()">清理全部历史会话</button>`;
