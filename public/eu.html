@@ -457,7 +457,7 @@ button.btn-secondary { background: var(--panel-soft); border-color: var(--border
   border-radius: 0;
   padding: 0;
   line-height: 1.7;
-  font-size: 1.05rem;
+  font-size: 1.25rem;
   color: #e5e7eb;
   white-space: pre-wrap;
 }
@@ -469,8 +469,8 @@ button.btn-secondary { background: var(--panel-soft); border-color: var(--border
 }
 #page-world-chat .chat-bubble .eu-readable-p {
   margin: 0 0 0.85em;
-  font-size: 1.05rem;
-  line-height: 1.7;
+  font-size: 1.25rem;
+  line-height: 1.75;
 }
 #page-world-chat .chat-bubble .eu-readable-p:last-child {
   margin-bottom: 0;
@@ -501,7 +501,7 @@ button.btn-secondary { background: var(--panel-soft); border-color: var(--border
   border-radius: 8px;
   padding: 8px 10px;
   line-height: 1.58;
-  font-size: 1.05rem;
+  font-size: 1.25rem;
 }
 .streaming-cursor {
   display: inline-block;
@@ -1185,13 +1185,41 @@ body.eu-page-chatroom .main-content {
     overflow: hidden;
     display: none;
     flex-direction: column;
-    z-index: 200;
+    z-index: 220;
   }
   .chat-ai-assist-panel.open {
     display: flex;
   }
   .chat-ai-assist-list {
     max-height: min(38vh, 280px);
+  }
+  /* 底栏在对话全屏之上，☰/💡 弹出层 fixed，避免被 #page-world-chat 盖住 */
+  body[data-world-chat-active='1'] .bottom-input-bar {
+    z-index: 210;
+  }
+  body[data-world-chat-active='1'] .chat-tools-menu {
+    position: fixed;
+    left: 12px;
+    right: auto;
+    bottom: calc(var(--eu-bottom-input-pad, 88px) + 8px);
+    min-width: min(200px, calc(100vw - 24px));
+    max-width: min(280px, calc(100vw - 24px));
+    max-height: min(48vh, 380px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    z-index: 221;
+  }
+  body[data-world-chat-active='1'] .chat-author-rule-panel {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    bottom: calc(var(--eu-bottom-input-pad, 88px) + 8px);
+    max-height: min(46vh, 360px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    z-index: 221;
   }
   /* 故事书全屏对话：顶栏不挡内容；标题/开场白正常横排可读 */
   body[data-world-chat-active='1'] .topbar-mobile {
@@ -1265,11 +1293,19 @@ body.eu-page-chatroom .main-content {
     word-break: normal !important;
     overflow-wrap: break-word;
     line-break: auto;
+    font-size: 1.3rem;
+    line-height: 1.75;
   }
   #page-world-chat .chat-bubble .eu-readable-p {
     word-break: normal !important;
     overflow-wrap: break-word;
     line-break: auto;
+    font-size: 1.3rem;
+    line-height: 1.75;
+  }
+  #page-world-chat .chat-item.is-user .chat-bubble {
+    font-size: 1.3rem;
+    line-height: 1.65;
   }
   #page-world-chat .reply-token-badge {
     flex-shrink: 0;
@@ -17930,7 +17966,7 @@ const EU_ST_NATIVE_CHAT_STACK = true;
 const EU_STRICT_ST_ALIGNMENT = true;
 /** 控制台 `document.documentElement.dataset.euClientBuild` 或 Network 禁用缓存后刷新，用于确认不是旧静态页。 */
 const EU_DEV_MODE_PASSPHRASE = '#开发者模式404945859';
-const EU_CLIENT_BUILD_STAMP = '20260522-writing-style-api-audit-v140';
+const EU_CLIENT_BUILD_STAMP = '20260523-shared-api-cm-sync-v142';
 /** 游客模式：故事书对话单会话内 user 消息上限（不含隐藏的开场 kickoff）。 */
 const EU_GUEST_MAX_USER_MESSAGES = 10;
 

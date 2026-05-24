@@ -47,6 +47,55 @@ function hasXaiSecretInRoot(userRoot) {
 }
 
 /**
+ * 解析 settings.json 内 extension_settings（可能是对象或 JSON 字符串）。
+ * @param {object} settings
+ */
+function getExtensionSettingsObject(settings) {
+    if (!settings || typeof settings !== 'object') {
+        return null;
+    }
+    const ext = settings.extension_settings;
+    if (ext && typeof ext === 'object' && !Array.isArray(ext)) {
+        return ext;
+    }
+    if (typeof ext === 'string' && ext.trim()) {
+        try {
+            const parsed = JSON.parse(ext);
+            return parsed && typeof parsed === 'object' ? parsed : null;
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
+/**
+ * 从站长模板合并 Connection Manager（五条文风 ↔ DEEPSEEKV3 等 + secret-id），否则仅 secrets.json 无法轮换 OpenRouter/xAI。
+ * @param {string} tgtSettingsPath
+ * @param {object|null} srcJ
+ */
+function mergeConnectionManagerFromSource(tgtSettingsPath, srcJ) {
+    const srcExt = getExtensionSettingsObject(srcJ);
+    const profiles = srcExt?.connectionManager?.profiles;
+    if (!Array.isArray(profiles) || !profiles.length) {
+        return false;
+    }
+    let tgtJ = readJsonFile(tgtSettingsPath) || {};
+    if (!tgtJ || typeof tgtJ !== 'object') {
+        tgtJ = {};
+    }
+    let tgtExt = getExtensionSettingsObject(tgtJ);
+    if (!tgtExt) {
+        tgtExt = {};
+    }
+    tgtExt.connectionManager = tgtExt.connectionManager || {};
+    tgtExt.connectionManager.profiles = JSON.parse(JSON.stringify(profiles));
+    tgtJ.extension_settings = tgtExt;
+    writeFileAtomicSync(tgtSettingsPath, JSON.stringify(tgtJ, null, 4));
+    return true;
+}
+
+/**
  * 预设 JSON 若仍为 openai，新用户 EU 会误走 OpenAI 密钥分支。
  * @param {string} presetDir
  */
@@ -152,6 +201,7 @@ export function applyEuSharedApiProfile(targetDirectories) {
                 tgtJ.oai_settings = { ...(tgtJ.oai_settings || {}), ...srcJ.oai_settings };
                 writeFileAtomicSync(tgtSettingsPath, JSON.stringify(tgtJ, null, 4));
             }
+            mergeConnectionManagerFromSource(tgtSettingsPath, srcJ);
         } catch (e) {
             console.warn('[EU shared-api] merge oai_settings failed:', e);
         }
